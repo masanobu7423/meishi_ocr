@@ -8,6 +8,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 
 import 'capture_screen.dart';
+import 'card_form.dart';
 import 'ocr/card_store.dart';
 import 'ocr/contact_mapper.dart';
 import 'ocr/extractor.dart';
@@ -15,23 +16,24 @@ import 'ocr/learned.dart';
 import 'ocr/ocr_line.dart';
 import 'ocr/ocr_pipeline.dart';
 import 'ocr/review_queue.dart';
+import 'theme.dart';
 
-// ponytail: Phase 0 spike grown into a thin UI over three pure-ish parts:
-// OcrPipeline (image -> lines, tilt correction), extractor (lines -> fields),
-// CardStore (golden JSON, Obsidian vault, vCard, logs). This file only holds
-// screen state and button handlers.
-void main() => runApp(const MaterialApp(home: SpikePage()));
+// Thin UI over three parts: OcrPipeline (image -> lines, tilt correction),
+// extractor (lines -> fields, with learned corrections), CardStore (golden
+// JSON, Obsidian vault, images, vCard, logs). This file holds screen state
+// and button handlers only. Look and copy follow DESIGN.md.
+void main() => runApp(MaterialApp(title: '名刺スキャン', theme: appTheme(), home: const ScanPage()));
 
 /// One imported card waiting for review.
 typedef QueuedCard = ({String stem, List<OcrLine> front, String imagePath});
 
-class SpikePage extends StatefulWidget {
-  const SpikePage({super.key});
+class ScanPage extends StatefulWidget {
+  const ScanPage({super.key});
   @override
-  State<SpikePage> createState() => _SpikePageState();
+  State<ScanPage> createState() => _ScanPageState();
 }
 
-class _SpikePageState extends State<SpikePage> {
+class _ScanPageState extends State<ScanPage> {
   final _picker = ImagePicker();
   final _ctl = {for (final k in CardFields.keys) k: TextEditingController()};
   final _queue = ReviewQueue<QueuedCard>();
@@ -41,9 +43,9 @@ class _SpikePageState extends State<SpikePage> {
   String? _frontPath, _backPath;
   Learned _learned = Learned();
   CardFields? _fields;
-  String _target = 'name';
-  String _status = '表を撮影するか、アルバムから選んでください';
   String? _source;
+  String? _progress; // non-null while OCR runs
+  String? _error; // what happened + what to do
 
   /// Android: `/sdcard/Android/data/<pkg>/files` (reachable with plain adb pull
   /// and the Files app). Elsewhere: app documents.
@@ -79,23 +81,18 @@ class _SpikePageState extends State<SpikePage> {
           k: _ctl[k]!.text.trim().isEmpty ? null : _ctl[k]!.text.trim(),
       };
 
-  String _warnings() {
-    if (_front == null || _fields == null) return '';
-    return [
-      if (isVertical(_front!)) '縦書き: OCR 精度低下、要手動確認',
-      if (missingCore(_fields!).isNotEmpty) '未取得: ${missingCore(_fields!).join(', ')}',
-    ].join('　');
-  }
+  Set<String> get _missing => _fields == null ? const {} : missingCore(_fields!).toSet();
+
+  void _toast(String message) =>
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
 
   // ---- capture -------------------------------------------------------------
 
   /// Android: ML Kit document scanner (edge detection + perspective
-  /// correction before capture). Elsewhere, or if the scanner fails: the
-  /// in-app camera with the card guide.
+  /// correction before capture, album import included). Elsewhere, or if
+  /// the scanner fails: the in-app camera with the card guide.
   Future<String?> _capture(String label) async {
     if (Platform.isAndroid) {
-      // isGalleryImport: the scanner UI also offers "pick from album" and
-      // applies the same edge detection / perspective fix to that image.
       final scanner = DocumentScanner(
           options: DocumentScannerOptions(
               pageLimit: 1, mode: ScannerMode.base, isGalleryImport: true));
@@ -122,20 +119,28 @@ class _SpikePageState extends State<SpikePage> {
         ? await _capture(front ? '表' : '裏')
         : (await _picker.pickImage(source: source))?.path;
     if (path == null) return;
-    setState(() => _status = 'OCR中...');
+    setState(() {
+      _progress = '${front ? "表" : "裏"}を読み取り中…';
+      _error = null;
+    });
     final r = await ocr.recognize(path, front: front);
     setState(() {
+      _progress = null;
       if (front) {
         _front = r.lines;
         _frontPath = path;
+        _back = null;
+        _backPath = null;
         _source = null; // a new card, not the queued one
+        _queue.clear(); // leaving the batch; its label and auto-advance no longer apply
       } else {
         _back = r.lines;
         _backPath = path;
       }
       _refill();
-      _status = '${front ? "表" : "裏"}: ${r.lines.length} 行認識'
-          '${r.deskewedBy == null ? "" : "（傾き ${r.deskewedBy!.toStringAsFixed(1)}° を補正）"}';
+      if (r.lines.isEmpty) {
+        _error = '文字を読み取れませんでした。明るい場所で、名刺を枠に合わせて撮り直してください';
+      }
     });
   }
 
@@ -143,7 +148,7 @@ class _SpikePageState extends State<SpikePage> {
 
   /// Save the reviewed fields; whatever the user changed against the
   /// extractor's guess is learned for the next card and logged.
-  Future<void> _saveReviewed() async {
+  Future<void> _saveReviewed({bool quiet = false}) async {
     final (store, _) = await _ready;
     final stem = _source?.replaceAll('.json', '') ??
         DateTime.now().toIso8601String().replaceAll(RegExp(r'[:.]'), '-');
@@ -162,7 +167,7 @@ class _SpikePageState extends State<SpikePage> {
     final learnedSomething = jsonEncode(_learned.toJson()) != before;
     if (learnedSomething) await store.saveLearned(_learned);
     await store.appendCorrection(stem, guess, corrected);
-    setState(() => _status = '保存: ${f.path}${learnedSomething ? "（修正を学習しました）" : ""}');
+    if (!quiet && mounted) _toast('保存しました${learnedSomething ? "。修正を次回から反映します" : ""}');
   }
 
   /// Register the reviewed card in the device address book. Phone/email
@@ -170,12 +175,12 @@ class _SpikePageState extends State<SpikePage> {
   Future<void> _registerContact() async {
     final fields = fieldsFromJson(_reviewed());
     if (fields.name == null) {
-      setState(() => _status = '氏名が空です');
+      setState(() => _error = '氏名が空です。読み取った文字をタップするか入力してください');
       return;
     }
     final perm = await FlutterContacts.permissions.request(PermissionType.readWrite);
     if (perm != PermissionStatus.granted) {
-      setState(() => _status = '連絡先の権限がありません');
+      setState(() => _error = '連絡先の権限がありません。端末の設定でこのアプリに連絡先を許可してください');
       return;
     }
     final existing = await FlutterContacts.getAll(
@@ -185,19 +190,23 @@ class _SpikePageState extends State<SpikePage> {
       final go = await showDialog<bool>(
         context: context,
         builder: (c) => AlertDialog(
-          title: const Text('重複の可能性'),
+          title: const Text('同じ人がいるかもしれません'),
           content: Text('既存の連絡先「${dup.displayName ?? ''}」と電話番号またはメールが一致します。'),
           actions: [
             TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('中止')),
-            FilledButton(onPressed: () => Navigator.pop(c, true), child: const Text('別人として追加')),
+            FilledButton(onPressed: () => Navigator.pop(c, true), child: const Text('別人として登録')),
           ],
         ),
       );
       if (go != true) return;
     }
-    final id = await FlutterContacts.create(
-        toContact(fields, scannedAt: DateTime.now(), source: _source));
-    setState(() => _status = '電話帳に登録しました (id $id)');
+    await _saveReviewed(quiet: true);
+    await FlutterContacts.create(toContact(fields, scannedAt: DateTime.now(), source: _source));
+    if (!mounted) return;
+    _toast('電話帳に登録しました');
+    setState(() => _error = null);
+    // Batch review: move on to the next card by itself.
+    if (_queue.current != null && _queue.next()) setState(_showQueued);
   }
 
   // ---- batch ---------------------------------------------------------------
@@ -208,11 +217,15 @@ class _SpikePageState extends State<SpikePage> {
     final (store, ocr) = await _ready;
     if (ocr.busy) return;
     final files = await store.inboxImages();
-    _queue.items.clear();
+    if (files.isEmpty) {
+      _toast('取込フォルダに画像がありません（${(await store.inbox()).path}）');
+      return;
+    }
+    _queue.clear();
     var levelled = 0;
-    for (final f in files) {
+    for (final (i, f) in files.indexed) {
       final stem = f.uri.pathSegments.last.replaceAll(RegExp(r'\.\w+$'), '');
-      setState(() => _status = 'OCR中: $stem');
+      setState(() => _progress = '読み取り中 ${i + 1}/${files.length}: $stem');
       final r = await ocr.recognize(f.path, front: true);
       if (r.lines.isEmpty) continue;
       if (r.deskewedBy != null) levelled++;
@@ -229,8 +242,9 @@ class _SpikePageState extends State<SpikePage> {
       _queue.items.add((stem: stem, front: r.lines, imagePath: f.path));
     }
     _showQueued();
-    setState(() => _status = 'inbox: ${_queue.items.length}/${files.length} 件を取込'
-        '${levelled == 0 ? "" : "（$levelled 件は傾き補正）"}。画面で確認して登録してください');
+    setState(() => _progress = null);
+    _toast('${_queue.items.length} 枚を取り込みました'
+        '${levelled == 0 ? "" : "（$levelled 枚は傾きを補正）"}。1 枚ずつ確認して登録してください');
   }
 
   void _showQueued() {
@@ -241,6 +255,7 @@ class _SpikePageState extends State<SpikePage> {
     _back = null;
     _backPath = null;
     _source = '${c.stem}.json';
+    _error = null;
     _refill();
   }
 
@@ -251,26 +266,26 @@ class _SpikePageState extends State<SpikePage> {
   Future<void> _exportVcard() async {
     final (store, _) = await _ready;
     final (file, n) = await store.exportVcard();
-    setState(() => _status = 'vCard: $n 件を ${file.path} に出力');
+    _toast('$n 件を vCard に書き出しました（${file.path}）');
   }
 
   // ---- UI ------------------------------------------------------------------
 
   @override
   Widget build(BuildContext context) {
-    final warn = _warnings();
-    final lines = [...?_front, ...?_back];
+    final scheme = Theme.of(context).colorScheme;
+    final hasCard = _front != null;
     return Scaffold(
       appBar: AppBar(
-        title: const Text('名刺OCR スパイク'),
+        title: const Text('名刺スキャン'),
         actions: [
           IconButton(
-            tooltip: 'inbox を一括取込',
+            tooltip: 'フォルダの画像をまとめて取り込む',
             icon: const Icon(Icons.folder_open),
-            onPressed: _importInbox,
+            onPressed: _progress == null ? _importInbox : null,
           ),
           IconButton(
-            tooltip: 'vault を vCard に出力',
+            tooltip: '全件を vCard に書き出す',
             icon: const Icon(Icons.contact_page_outlined),
             onPressed: _exportVcard,
           ),
@@ -278,122 +293,210 @@ class _SpikePageState extends State<SpikePage> {
       ),
       body: Column(
         children: [
-          Padding(
-            padding: const EdgeInsets.all(8),
-            child: Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              alignment: WrapAlignment.center,
-              crossAxisAlignment: WrapCrossAlignment.center,
-              children: [
-                _SideButtons('表', (s) => _shoot(true, s)),
-                _SideButtons('裏', (s) => _shoot(false, s)),
-                FilledButton(
-                  onPressed: _front == null ? null : _saveReviewed,
-                  child: const Text('JSON保存'),
-                ),
-                FilledButton.tonal(
-                  onPressed: _front == null ? null : _registerContact,
-                  child: const Text('電話帳に登録'),
-                ),
+          if (_progress != null)
+            ListTile(
+              leading: const SizedBox(
+                  width: AppSize.iconSmall,
+                  height: AppSize.iconSmall,
+                  child: CircularProgressIndicator(strokeWidth: 2)),
+              title: Text(_progress!),
+            ),
+          if (_error != null)
+            MaterialBanner(
+              content: Text(_error!),
+              backgroundColor: scheme.errorContainer,
+              contentTextStyle: TextStyle(color: scheme.onErrorContainer),
+              actions: [
+                TextButton(onPressed: () => setState(() => _error = null), child: const Text('閉じる')),
               ],
             ),
-          ),
-          Padding(padding: const EdgeInsets.symmetric(horizontal: 8), child: SelectableText(_status)),
-          if (_queue.current != null)
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                IconButton(
-                  tooltip: '前の名刺',
-                  icon: const Icon(Icons.chevron_left),
-                  onPressed: () => _move(false),
-                ),
-                Text('レビュー ${_queue.label}: ${_queue.current!.stem}'),
-                IconButton(
-                  tooltip: '次の名刺',
-                  icon: const Icon(Icons.chevron_right),
-                  onPressed: () => _move(true),
-                ),
-              ],
+          if (!hasCard)
+            Expanded(
+              child: _EmptyState(
+                onShoot: () => _shoot(true, ImageSource.camera),
+                onAlbum: () => _shoot(true, ImageSource.gallery),
+              ),
+            )
+          else ...[
+            _CardHeader(
+              frontPath: _frontPath,
+              backPath: _backPath,
+              // The file stem is a dev name (DESIGN.md §7): show position only.
+              queueLabel: _queue.current == null ? null : '${_queue.label} 枚目を確認中',
+              onPrev: () => _move(false),
+              onNext: () => _move(true),
+              onBackShoot: () => _shoot(false, ImageSource.camera),
+              onBackAlbum: () => _shoot(false, ImageSource.gallery),
             ),
-          if (warn.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.all(8),
-              child: Text(warn, style: TextStyle(color: Theme.of(context).colorScheme.error)),
+            Expanded(
+              child: CardForm(
+                key: ValueKey(_frontPath),
+                controllers: _ctl,
+                lines: [...?_front, ...?_back],
+                missing: _missing,
+              ),
             ),
-          Expanded(
-            child: ListView(
-              padding: const EdgeInsets.symmetric(horizontal: 8),
-              children: [
-                // Field rows: pick the target with the chip, type or tap an OCR line below.
-                for (final k in CardFields.keys)
-                  Row(
-                    children: [
-                      SizedBox(
-                        width: 110,
-                        child: ChoiceChip(
-                          label: Text(k, style: const TextStyle(fontSize: 12)),
-                          selected: _target == k,
-                          onSelected: (_) => setState(() => _target = k),
-                        ),
-                      ),
-                      Expanded(
-                        child: TextField(
-                          controller: _ctl[k],
-                          decoration: const InputDecoration(isDense: true),
-                          onTap: () => setState(() => _target = k),
-                        ),
-                      ),
-                    ],
-                  ),
-                if (lines.isNotEmpty) ...[
-                  const Divider(),
-                  Text('OCR 行をタップ → 「$_target」に入れる',
-                      style: Theme.of(context).textTheme.labelMedium),
-                  Wrap(
-                    spacing: 6,
-                    runSpacing: 4,
-                    children: [
-                      for (final l in lines)
-                        ActionChip(
-                          label: Text('[${l.height.round()}] ${l.text}',
-                              style: const TextStyle(fontSize: 12)),
-                          onPressed: () =>
-                              setState(() => _ctl[_target]!.text = normalize(l.text)),
-                        ),
-                    ],
-                  ),
-                ],
-              ],
-            ),
-          ),
+          ],
         ],
+      ),
+      bottomNavigationBar: hasCard
+          ? SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(
+                    AppSpace.gutter, AppSpace.unit, AppSpace.gutter, AppSpace.unit),
+                child: Row(
+                  children: [
+                    IconButton.outlined(
+                      tooltip: '次の名刺を撮影',
+                      icon: const Icon(Icons.add_a_photo_outlined),
+                      onPressed: () => _shoot(true, ImageSource.camera),
+                    ),
+                    const SizedBox(width: AppSpace.unit),
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: _progress == null ? _saveReviewed : null,
+                        child: const Text('保存'),
+                      ),
+                    ),
+                    const SizedBox(width: AppSpace.unit),
+                    Expanded(
+                      flex: 2,
+                      child: FilledButton.icon(
+                        onPressed: _progress == null ? _registerContact : null,
+                        icon: const Icon(Icons.person_add_alt_1),
+                        label: const Text('電話帳に登録'),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            )
+          : null,
+    );
+  }
+}
+
+/// First screen: nothing scanned yet.
+class _EmptyState extends StatelessWidget {
+  final VoidCallback onShoot, onAlbum;
+  const _EmptyState({required this.onShoot, required this.onAlbum});
+
+  @override
+  Widget build(BuildContext context) {
+    final text = Theme.of(context).textTheme;
+    final scheme = Theme.of(context).colorScheme;
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(AppSpace.gutter * 2),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.badge_outlined, size: AppSize.hero, color: scheme.primary, semanticLabel: '名刺'),
+            const SizedBox(height: AppSpace.gutter),
+            Text('名刺を撮影するか、アルバムから選んでください',
+                style: text.titleMedium, textAlign: TextAlign.center),
+            const SizedBox(height: AppSpace.unit),
+            Text('読み取った内容を確認してから電話帳に登録します。通信は使いません。',
+                style: text.bodyMedium?.copyWith(color: scheme.onSurfaceVariant),
+                textAlign: TextAlign.center),
+            const SizedBox(height: AppSpace.gutter * 2),
+            FilledButton.icon(
+              onPressed: onShoot,
+              icon: const Icon(Icons.camera_alt),
+              label: const Text('表を撮影'),
+            ),
+            const SizedBox(height: AppSpace.unit),
+            OutlinedButton.icon(
+              onPressed: onAlbum,
+              icon: const Icon(Icons.photo_library_outlined),
+              label: const Text('アルバムから選ぶ'),
+            ),
+          ],
+        ),
       ),
     );
   }
 }
 
-/// "表を撮影" + an explicit album button for the same side.
-class _SideButtons extends StatelessWidget {
-  final String label;
-  final void Function(ImageSource) onPick;
-  const _SideButtons(this.label, this.onPick);
+/// The card photos (the one memorable element, DESIGN.md §1) and batch nav.
+class _CardHeader extends StatelessWidget {
+  final String? frontPath, backPath, queueLabel;
+  final VoidCallback onPrev, onNext, onBackShoot, onBackAlbum;
+  const _CardHeader({
+    required this.frontPath,
+    required this.backPath,
+    required this.queueLabel,
+    required this.onPrev,
+    required this.onNext,
+    required this.onBackShoot,
+    required this.onBackAlbum,
+  });
+
+  Widget _thumb(BuildContext context, String? path, String label) {
+    final scheme = Theme.of(context).colorScheme;
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(AppRadius.medium),
+      child: Container(
+        color: scheme.surfaceContainerHigh,
+        height: AppSize.thumb,
+        child: path != null && File(path).existsSync()
+            ? Semantics(
+                label: '$labelの写真',
+                image: true,
+                child: Image.file(File(path), fit: BoxFit.cover, width: double.infinity),
+              )
+            : Center(
+                child: Text('$labelなし', style: TextStyle(color: scheme.onSurfaceVariant)),
+              ),
+      ),
+    );
+  }
 
   @override
-  Widget build(BuildContext context) => Row(
-        mainAxisSize: MainAxisSize.min,
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(AppSpace.gutter, AppSpace.unit, AppSpace.gutter, 0),
+      child: Column(
         children: [
-          OutlinedButton.icon(
-            onPressed: () => onPick(ImageSource.camera),
-            icon: const Icon(Icons.camera_alt, size: 18),
-            label: Text('$labelを撮影'),
-          ),
-          IconButton(
-            tooltip: '$labelをアルバムから',
-            icon: const Icon(Icons.photo_library_outlined),
-            onPressed: () => onPick(ImageSource.gallery),
+          if (queueLabel != null)
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                IconButton(tooltip: '前の名刺', icon: const Icon(Icons.chevron_left), onPressed: onPrev),
+                Flexible(child: Text(queueLabel!, overflow: TextOverflow.ellipsis)),
+                IconButton(tooltip: '次の名刺', icon: const Icon(Icons.chevron_right), onPressed: onNext),
+              ],
+            ),
+          Row(
+            children: [
+              Expanded(child: _thumb(context, frontPath, '表')),
+              const SizedBox(width: AppSpace.unit),
+              Expanded(
+                child: backPath != null
+                    ? _thumb(context, backPath, '裏')
+                    // Wrap, not Row: at 2x text on a narrow phone the two
+                    // controls do not fit side by side.
+                    : Wrap(
+                        alignment: WrapAlignment.center,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        children: [
+                          OutlinedButton.icon(
+                            onPressed: onBackShoot,
+                            icon: const Icon(Icons.camera_alt),
+                            label: const Text('裏を撮影'),
+                          ),
+                          IconButton(
+                            tooltip: '裏をアルバムから',
+                            icon: const Icon(Icons.photo_library_outlined),
+                            onPressed: onBackAlbum,
+                          ),
+                        ],
+                      ),
+              ),
+            ],
           ),
         ],
-      );
+      ),
+    );
+  }
 }

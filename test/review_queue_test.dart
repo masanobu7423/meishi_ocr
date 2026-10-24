@@ -21,6 +21,16 @@ void main() {
     expect(q.label, '3/3');
   });
 
+  test('clear resets the position so a smaller next batch cannot go out of range', () {
+    final q = ReviewQueue<String>(['a', 'b', 'c', 'd', 'e'])..next()..next()..next()..next();
+    q.clear();
+    expect(q.current, isNull);
+    expect(q.label, '');
+    q.items.addAll(['x', 'y']);
+    expect(q.current, 'x');
+    expect(q.label, '1/2');
+  });
+
   test('removeCurrent drops the item and keeps a valid position', () {
     final q = ReviewQueue<String>(['a', 'b', 'c'])..next()..next();
     q.removeCurrent();

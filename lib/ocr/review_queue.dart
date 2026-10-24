@@ -19,6 +19,13 @@ class ReviewQueue<T> {
     return true;
   }
 
+  /// Drops everything and goes back to the start; `items.clear()` alone would
+  /// leave the cursor pointing past the end of a smaller next batch.
+  void clear() {
+    items.clear();
+    _i = 0;
+  }
+
   void removeCurrent() {
     if (items.isEmpty) return;
     items.removeAt(_i);
