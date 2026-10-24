@@ -39,7 +39,7 @@ class _SpikePageState extends State<SpikePage> {
   String? _frontPath, _backPath;
   CardFields? _fields;
   String _target = 'name';
-  String _status = '表を撮影してください（長押しでギャラリー）';
+  String _status = '表を撮影するか、アルバムから選んでください';
   String? _source;
 
   /// Android: `/sdcard/Android/data/<pkg>/files` (reachable with plain adb pull
@@ -88,8 +88,11 @@ class _SpikePageState extends State<SpikePage> {
   /// in-app camera with the card guide.
   Future<String?> _capture(String label) async {
     if (Platform.isAndroid) {
+      // isGalleryImport: the scanner UI also offers "pick from album" and
+      // applies the same edge detection / perspective fix to that image.
       final scanner = DocumentScanner(
-          options: DocumentScannerOptions(pageLimit: 1, mode: ScannerMode.base));
+          options: DocumentScannerOptions(
+              pageLimit: 1, mode: ScannerMode.base, isGalleryImport: true));
       try {
         final r = await scanner.scanDocument();
         final path = r.images?.firstOrNull;
@@ -261,11 +264,14 @@ class _SpikePageState extends State<SpikePage> {
         children: [
           Padding(
             padding: const EdgeInsets.all(8),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            child: Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              alignment: WrapAlignment.center,
+              crossAxisAlignment: WrapCrossAlignment.center,
               children: [
-                _ShootButton('表', (s) => _shoot(true, s)),
-                _ShootButton('裏', (s) => _shoot(false, s)),
+                _SideButtons('表', (s) => _shoot(true, s)),
+                _SideButtons('裏', (s) => _shoot(false, s)),
                 FilledButton(
                   onPressed: _front == null ? null : _saveReviewed,
                   child: const Text('JSON保存'),
@@ -352,17 +358,26 @@ class _SpikePageState extends State<SpikePage> {
   }
 }
 
-class _ShootButton extends StatelessWidget {
+/// "表を撮影" + an explicit album button for the same side.
+class _SideButtons extends StatelessWidget {
   final String label;
   final void Function(ImageSource) onPick;
-  const _ShootButton(this.label, this.onPick);
+  const _SideButtons(this.label, this.onPick);
 
   @override
-  Widget build(BuildContext context) => GestureDetector(
-        onLongPress: () => onPick(ImageSource.gallery),
-        child: OutlinedButton(
-          onPressed: () => onPick(ImageSource.camera),
-          child: Text('$labelを撮影'),
-        ),
+  Widget build(BuildContext context) => Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          OutlinedButton.icon(
+            onPressed: () => onPick(ImageSource.camera),
+            icon: const Icon(Icons.camera_alt, size: 18),
+            label: Text('$labelを撮影'),
+          ),
+          IconButton(
+            tooltip: '$labelをアルバムから',
+            icon: const Icon(Icons.photo_library_outlined),
+            onPressed: () => onPick(ImageSource.gallery),
+          ),
+        ],
       );
 }
