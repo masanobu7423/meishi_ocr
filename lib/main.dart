@@ -21,7 +21,7 @@ import 'ocr/review_queue.dart';
 void main() => runApp(const MaterialApp(home: SpikePage()));
 
 /// One imported card waiting for review.
-typedef QueuedCard = ({String stem, List<OcrLine> front});
+typedef QueuedCard = ({String stem, List<OcrLine> front, String imagePath});
 
 class SpikePage extends StatefulWidget {
   const SpikePage({super.key});
@@ -36,6 +36,7 @@ class _SpikePageState extends State<SpikePage> {
   late final Future<(CardStore, OcrPipeline)> _ready = _init();
 
   List<OcrLine>? _front, _back;
+  String? _frontPath, _backPath;
   CardFields? _fields;
   String _target = 'name';
   String _status = '表を撮影してください（長押しでギャラリー）';
@@ -117,8 +118,11 @@ class _SpikePageState extends State<SpikePage> {
     setState(() {
       if (front) {
         _front = r.lines;
+        _frontPath = path;
+        _source = null; // a new card, not the queued one
       } else {
         _back = r.lines;
+        _backPath = path;
       }
       _refill();
       _status = '${front ? "表" : "裏"}: ${r.lines.length} 行認識'
@@ -135,7 +139,9 @@ class _SpikePageState extends State<SpikePage> {
             DateTime.now().toIso8601String().replaceAll(RegExp(r'[:.]'), '-'),
         front: _front!,
         back: _back ?? const [],
-        expected: _reviewed());
+        expected: _reviewed(),
+        frontImage: _frontPath == null ? null : File(_frontPath!),
+        backImage: _backPath == null ? null : File(_backPath!));
     _source = f.uri.pathSegments.last;
     setState(() => _status = '保存: ${f.path}');
   }
@@ -195,8 +201,13 @@ class _SpikePageState extends State<SpikePage> {
       _back = null;
       _refill();
       await store.saveCard(
-          stem: stem, front: r.lines, frontRaw: r.rawLines, back: const [], expected: _fields!.toJson());
-      _queue.items.add((stem: stem, front: r.lines));
+          stem: stem,
+          front: r.lines,
+          frontRaw: r.rawLines,
+          back: const [],
+          expected: _fields!.toJson(),
+          frontImage: f);
+      _queue.items.add((stem: stem, front: r.lines, imagePath: f.path));
     }
     _showQueued();
     setState(() => _status = 'inbox: ${_queue.items.length}/${files.length} 件を取込'
@@ -207,7 +218,9 @@ class _SpikePageState extends State<SpikePage> {
     final c = _queue.current;
     if (c == null) return;
     _front = c.front;
+    _frontPath = c.imagePath;
     _back = null;
+    _backPath = null;
     _source = '${c.stem}.json';
     _refill();
   }

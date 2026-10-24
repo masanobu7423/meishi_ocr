@@ -42,24 +42,38 @@ class CardStore {
     required List<OcrLine> back,
     required Map<String, String?> expected,
     List<OcrLine>? frontRaw,
+    File? frontImage,
+    File? backImage,
     DateTime? scannedAt,
   }) async {
     final now = scannedAt ?? DateTime.now();
     final vertical = isVertical(front);
+    final vault = await _dir('vault').create(recursive: true);
+    // The card images live with the notes so Obsidian can embed them, and
+    // they survive the camera's temp files being cleaned.
+    final images = <String, String>{};
+    for (final (side, img) in [('front', frontImage), ('back', backImage)]) {
+      if (img == null) continue;
+      final ext = img.path.split('.').last.toLowerCase();
+      final rel = 'images/${stem}_$side.$ext';
+      await Directory('${vault.path}/images').create(recursive: true);
+      await img.copy('${vault.path}/$rel');
+      images[side] = rel;
+    }
     final golden = await _dir('golden').create(recursive: true);
     final file = File('${golden.path}/$stem.json');
     await file.writeAsString(const JsonEncoder.withIndent(' ').convert({
       'strict': false,
       'vertical': vertical,
+      if (images.isNotEmpty) 'images': images,
       'front': front.map((l) => l.toJson()).toList(),
       if (frontRaw != null) 'frontRaw': frontRaw.map((l) => l.toJson()).toList(),
       'back': back.map((l) => l.toJson()).toList(),
       'expected': expected,
     }));
     final fields = fieldsFromJson(expected);
-    final vault = await _dir('vault').create(recursive: true);
-    await File('${vault.path}/${cardNoteFilename(fields, now)}').writeAsString(
-        cardNoteMarkdown(fields, scannedAt: now, vertical: vertical, source: '$stem.json'));
+    await File('${vault.path}/${cardNoteFilename(fields, now)}').writeAsString(cardNoteMarkdown(
+        fields, scannedAt: now, vertical: vertical, source: '$stem.json', images: images));
     await File('${vault.path}/_名刺一覧.md').writeAsString(buildIndex(await _notes(vault)));
     return file;
   }

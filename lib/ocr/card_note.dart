@@ -39,8 +39,13 @@ String _ymd(DateTime t) =>
 String cardNoteFilename(CardFields f, DateTime scannedAt) =>
     '${(f.name ?? '名無し').replaceAll(RegExp(r'[\\/:*?"<>|\s]'), '_')}_${_ymd(scannedAt)}.md';
 
+/// [images] maps 'front' / 'back' to paths relative to the vault root
+/// (e.g. `images/c1_front.jpg`); they become Obsidian embeds.
 String cardNoteMarkdown(CardFields f,
-    {required DateTime scannedAt, bool vertical = false, String? source}) {
+    {required DateTime scannedAt,
+    bool vertical = false,
+    String? source,
+    Map<String, String> images = const {}}) {
   final pref = f.address == null ? null : _pref.firstMatch(f.address!)?[1];
   final city = pref == null
       ? null
@@ -87,6 +92,8 @@ String cardNoteMarkdown(CardFields f,
     ..write('scanned: ${_ymd(scannedAt)}\n')
     ..write('vertical: $vertical\n')
     ..write(fm('source', source))
+    ..write(fm('image_front', images['front']))
+    ..write(fm('image_back', images['back']))
     ..write('tags: [${tags.join(', ')}]\n')
     ..write('---\n')
     ..write('# ${f.name ?? '名無し'}\n\n');
@@ -110,6 +117,12 @@ String cardNoteMarkdown(CardFields f,
     final rest = pref == null ? f.address! : f.address!.substring(pref.length);
     b.write('- 住所: ${f.postal == null ? '' : '〒${f.postal} '}'
         '${pref == null ? '' : '[[$pref]]'}$rest\n');
+  }
+  if (images.isNotEmpty) {
+    b.write('\n');
+    for (final side in ['front', 'back']) {
+      if (images[side] != null) b.write('![[${images[side]}]]\n');
+    }
   }
   b
     ..write('\n')

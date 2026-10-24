@@ -68,6 +68,20 @@ adb pull /sdcard/Android/data/jp.tobishoku.meishi_ocr/files/golden ./pulled
 実機確認（P08 T）: 写真風名刺 → OCR → 登録で、姓名分割・ふりがな `ヤマダタロウ`・電話 3 件のラベル・メール・
 住所・組織・URL・メモが連絡先 DB に入ることを `adb shell content query` で確認済み。テスト用連絡先は削除済み。
 
+## 名刺画像の保存（表・裏）
+
+保存のたびに撮影画像を `vault/images/<stem>_front.jpg` / `<stem>_back.jpg` にコピーする（カメラの一時ファイルは
+消えるため）。golden JSON には `images: {front, back}`、ノートには frontmatter `image_front` / `image_back` と
+Obsidian の埋め込み `![[images/<stem>_front.jpg]]` が入るので、vault を Obsidian で開くとノートに名刺の写真が表示される。
+一括取込では inbox の元画像が表面としてコピーされる。
+
+「DB」は SQLite ではなく、この `golden/`（JSON）+ `vault/`（MD + 画像）のファイル群。1 名刺 = 1 JSON + 1 MD + 画像で、
+全文検索・集計は Obsidian 側（`_名刺一覧.md`、タグ、バックリンク）に任せる。件数が数千を超えて一覧生成が遅くなったら
+SQLite 索引を足す（現状は YAGNI）。
+
+**裏面の OCR は日本語モデルに統一した。** 以前は裏面を英語モデルで読んでいたため、日本語の裏面（地図・事業内容）で
+「裏: 0 行認識」になる事象が実機で出た。日本語モデルは英字も読めるので、英語モデルは使わない。
+
 ## 斜め撮影の補正（`lib/ocr/ocr_pipeline.dart`, `lib/ocr/deskew.dart`）
 
 2 段構えにした。

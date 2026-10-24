@@ -34,6 +34,31 @@ void main() {
     expect(index, contains('[[株式会社サンライズ]] (1)'));
   });
 
+  test('saveCard copies the card images into vault/images and links them', () async {
+    final src = await File('${tmp.path}/shot_front.jpg').writeAsBytes([0xFF, 0xD8, 1, 2]);
+    final back = await File('${tmp.path}/shot_back.png').writeAsBytes([0x89, 0x50, 3]);
+    final file = await store.saveCard(
+        stem: 'c1', front: front, back: const [], expected: expected,
+        frontImage: src, backImage: back, scannedAt: DateTime(2026, 10, 25));
+    expect(await File('${tmp.path}/vault/images/c1_front.jpg').readAsBytes(), [0xFF, 0xD8, 1, 2]);
+    expect(await File('${tmp.path}/vault/images/c1_back.png').readAsBytes(), [0x89, 0x50, 3]);
+    final j = jsonDecode(await file.readAsString()) as Map<String, dynamic>;
+    expect(j['images'], {'front': 'images/c1_front.jpg', 'back': 'images/c1_back.png'});
+    final note = await File('${tmp.path}/vault/山田_太郎_2026-10-25.md').readAsString();
+    expect(note, contains('![[images/c1_front.jpg]]'));
+    expect(note, contains('![[images/c1_back.png]]'));
+    expect(note, contains('image_front: images/c1_front.jpg\n'));
+  });
+
+  test('saveCard without images writes no images key or embeds', () async {
+    final file = await store.saveCard(
+        stem: 'c2', front: front, back: const [], expected: expected, scannedAt: DateTime(2026));
+    final j = jsonDecode(await file.readAsString()) as Map<String, dynamic>;
+    expect(j.containsKey('images'), isFalse);
+    expect(await File('${tmp.path}/vault/山田_太郎_2026-01-01.md').readAsString(),
+        isNot(contains('![[')));
+  });
+
   test('exportVcard writes one VCARD per saved card', () async {
     await store.saveCard(stem: 'c1', front: front, back: const [], expected: expected,
         scannedAt: DateTime(2026, 10, 25));

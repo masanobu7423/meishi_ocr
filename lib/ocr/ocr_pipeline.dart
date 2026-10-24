@@ -30,8 +30,10 @@ class OcrResult {
 /// corrected here; on Android the document scanner does that before capture.
 class OcrPipeline {
   final CardStore store;
+  // One Japanese recognizer for both sides: it reads Latin fine (emails,
+  // "Taro Yamada"), while the Latin model returns 0 lines on a Japanese
+  // back side, which is what a user hit on a real card.
   final _jp = TextRecognizer(script: TextRecognitionScript.japanese);
-  final _latin = TextRecognizer(script: TextRecognitionScript.latin);
   Future<void> _chain = Future.value();
 
   OcrPipeline(this.store);
@@ -69,7 +71,7 @@ class OcrPipeline {
   }
 
   Future<OcrResult> _pass(String path, bool front) async {
-    final rec = await (front ? _jp : _latin)
+    final rec = await _jp
         .processImage(InputImage.fromFilePath(path))
         .timeout(const Duration(seconds: 30));
     return OcrResult([
@@ -91,8 +93,5 @@ class OcrPipeline {
     return math.atan2((p1.y - p0.y).toDouble(), (p1.x - p0.x).toDouble()) * 180 / math.pi;
   }
 
-  void dispose() {
-    _jp.close();
-    _latin.close();
-  }
+  void dispose() => _jp.close();
 }
