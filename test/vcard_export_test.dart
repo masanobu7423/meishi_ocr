@@ -34,7 +34,7 @@ void main() {
     expect(f, {
       'name': '山田 太郎', 'nameKana': 'やまだ たろう', 'nameRoman': 'Taro Yamada',
       'company': 'X', 'dept': 'D', 'title': 'T', 'phone': '1', 'mobile': '2',
-      'fax': '3', 'email': 'e', 'url': 'u', 'postal': 'p', 'address': 'a',
+      'fax': '3', 'email': 'e', 'url': 'u', 'postal': 'p', 'address': 'a', 'memo': null,
     });
   });
 

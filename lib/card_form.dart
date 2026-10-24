@@ -19,12 +19,14 @@ const fieldLabels = <String, String>{
   'url': 'URL',
   'postal': '郵便番号',
   'address': '住所',
+  'memo': 'メモ（会った場所・日付など）',
 };
 
-/// Fields in the order a person reads a card: who, where, how to reach.
+/// Fields in the order a person reads a card: who, where, how to reach,
+/// then the user's own note.
 const fieldOrder = [
   'name', 'nameKana', 'company', 'dept', 'title',
-  'phone', 'mobile', 'email', 'postal', 'address', 'fax', 'url', 'nameRoman',
+  'phone', 'mobile', 'email', 'postal', 'address', 'fax', 'url', 'nameRoman', 'memo',
 ];
 
 /// The review form: one text field per card field, plus the OCR lines as

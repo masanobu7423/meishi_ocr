@@ -82,6 +82,17 @@ adb pull /sdcard/Android/data/jp.tobishoku.meishi_ocr/files/golden ./pulled
 - 開発用語（JSON / golden / inbox / スパイク）と英語のフィールドキーは画面に出さない。
 - `test/card_form_test.dart`: 日本語ラベル、チップ→入力先、欠落ヘルパー、文字サイズ 2 倍での崩れなしを固定。
 
+## 履歴・メモ・バックアップ・ダークモード
+
+- **履歴**（時計アイコン、`lib/history_screen.dart`）: 保存した名刺を新しい順に一覧し、氏名・会社・役職・メモで検索
+  （大文字小文字・全角半角・ひらがなカタカナを区別しない）。タップで確認画面に戻し、保存した値と写真をそのまま再表示。
+  一覧は vault のノートの frontmatter だけから作る（`lib/ocr/history.dart`）ので、Obsidian で直した内容も反映される。
+- **メモ**: 「メモ（会った場所・日付など）」欄。ノートの frontmatter `memo` と本文、連絡先のメモ欄の先頭に入る。
+  履歴の検索対象。OCR からは決して埋めない。
+- **バックアップ**（メニュー）: `backup/meishi_backup_<日付>_<時刻>.zip` に vault（ノート + 画像）・golden・learned.json を
+  まとめる。別端末では zip を展開してアプリの外部領域に置けば履歴と学習が戻る（復元 UI は未実装）。
+- **ダークモード**: 端末設定に追従（`darkTheme`）。
+
 ## 手動修正から学ぶ（`lib/ocr/learned.dart`）
 
 「機械学習で今後の解析に応用」は、この規模（数十〜数百枚、端末内、無料）では**モデルの再学習ではなく、修正から

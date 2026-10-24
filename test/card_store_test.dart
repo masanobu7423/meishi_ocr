@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:archive/archive.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:meishi_ocr/ocr/card_store.dart';
 import 'package:meishi_ocr/ocr/learned.dart';
@@ -91,6 +92,32 @@ void main() {
     final rec = jsonDecode(log.single) as Map<String, dynamic>;
     expect(rec['stem'], 'c1');
     expect(rec['changes'], {'company': {'from': null, 'to': 'ABC'}});
+  });
+
+  test('loadCard round-trips what saveCard wrote', () async {
+    final img = await File('${tmp.path}/f.jpg').writeAsBytes([1, 2, 3]);
+    await store.saveCard(stem: 'c1', front: front, back: const [], expected: expected,
+        frontImage: img, scannedAt: DateTime(2026, 10, 25));
+    final card = await store.loadCard('c1');
+    expect(card, isNotNull);
+    expect(card!.front.single.text, '山田 太郎');
+    expect(card.back, isEmpty);
+    expect(card.expected['company'], '株式会社サンライズ');
+    expect(card.frontImage?.path, endsWith('images/c1_front.jpg'));
+    expect(card.backImage, isNull);
+    expect(await store.loadCard('nope'), isNull);
+  });
+
+  test('backup zips vault, golden and learned.json', () async {
+    await store.saveCard(stem: 'c1', front: front, back: const [], expected: expected,
+        scannedAt: DateTime(2026, 10, 25));
+    await store.saveLearned(Learned()..confusions['ニ→二'] = 2);
+    final (file, count) = await store.backup(now: DateTime(2026, 10, 25, 9, 30));
+    expect(file.path, endsWith('backup/meishi_backup_2026-10-25_0930.zip'));
+    final names = ZipDecoder().decodeBytes(await file.readAsBytes()).map((f) => f.name).toSet();
+    expect(names, containsAll(['golden/c1.json', 'vault/山田_太郎_2026-10-25.md', 'vault/_名刺一覧.md', 'learned.json']));
+    expect(count, names.length);
+    expect(names.any((n) => n.startsWith('backup/')), isFalse, reason: 'no zip inside the zip');
   });
 
   test('appendError appends one line per failure', () async {

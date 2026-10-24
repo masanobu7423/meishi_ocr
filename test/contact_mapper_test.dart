@@ -50,6 +50,10 @@ void main() {
       expect(c.addresses.single.label.label, AddressLabel.work);
       expect(c.notes.single.note, '名刺取込 2026-10-25 (x.json)');
     });
+    test('memo is prepended to the contact note', () {
+      final c = toContact(_card()..memo = '展示会で名刺交換', scannedAt: DateTime(2026, 10, 25));
+      expect(c.notes.single.note, '展示会で名刺交換\n名刺取込 2026-10-25');
+    });
   });
 
   group('findDuplicate', () {

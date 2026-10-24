@@ -46,7 +46,11 @@ Contact toContact(CardFields f, {required DateTime scannedAt, String? source}) {
       if (f.company != null || f.title != null || f.dept != null)
         Organization(name: f.company, jobTitle: f.title, departmentName: f.dept),
     ],
-    notes: [Note(note: '名刺取込 ${_ymd(scannedAt)}${source == null ? '' : ' ($source)'}')],
+    notes: [
+      Note(
+          note: '${f.memo == null ? '' : '${f.memo}\n'}'
+              '名刺取込 ${_ymd(scannedAt)}${source == null ? '' : ' ($source)'}'),
+    ],
   );
 }
 

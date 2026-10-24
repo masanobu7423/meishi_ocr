@@ -89,6 +89,7 @@ String cardNoteMarkdown(CardFields f,
     ..write(fm('pref', pref))
     ..write(fm('city', city))
     ..write(fm('address', f.address))
+    ..write(fm('memo', f.memo))
     ..write('scanned: ${_ymd(scannedAt)}\n')
     ..write('vertical: $vertical\n')
     ..write(fm('source', source))
@@ -118,6 +119,7 @@ String cardNoteMarkdown(CardFields f,
     b.write('- 住所: ${f.postal == null ? '' : '〒${f.postal} '}'
         '${pref == null ? '' : '[[$pref]]'}$rest\n');
   }
+  if (f.memo != null) b.write('- メモ: ${f.memo}\n');
   if (images.isNotEmpty) {
     b.write('\n');
     for (final side in ['front', 'back']) {

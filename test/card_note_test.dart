@@ -32,6 +32,12 @@ void main() {
         everyElement(matches(RegExp(r'^#[\w぀-ゟ゠-ヿ一-鿿-]+$'))));
   });
 
+  test('memo goes into the frontmatter and the body', () {
+    final md = cardNoteMarkdown(f..memo = '2026-10-24 展示会で名刺交換', scannedAt: when);
+    expect(md, contains('memo: 2026-10-24 展示会で名刺交換\n'));
+    expect(md, contains('- メモ: 2026-10-24 展示会で名刺交換\n'));
+  });
+
   test('filename is sanitized and dated', () {
     expect(cardNoteFilename(f, when), '山田_太郎_2026-10-24.md');
     expect(cardNoteFilename(CardFields(), when), '名無し_2026-10-24.md');

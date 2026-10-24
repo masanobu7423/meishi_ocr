@@ -7,9 +7,12 @@ class CardFields {
   String? name, nameKana, nameRoman, company, dept, title;
   String? phone, mobile, fax, email, url, postal, address;
 
+  /// Free text the user adds (where / when they met); never extracted.
+  String? memo;
+
   static const keys = [
     'name', 'nameKana', 'nameRoman', 'company', 'dept', 'title',
-    'phone', 'mobile', 'fax', 'email', 'url', 'postal', 'address',
+    'phone', 'mobile', 'fax', 'email', 'url', 'postal', 'address', 'memo',
   ];
 
   void set(String key, String? v) {
@@ -27,6 +30,7 @@ class CardFields {
       case 'url': url = v;
       case 'postal': postal = v;
       case 'address': address = v;
+      case 'memo': memo = v;
     }
   }
 
@@ -44,6 +48,7 @@ class CardFields {
         'url': url,
         'postal': postal,
         'address': address,
+        'memo': memo,
       };
 }
 

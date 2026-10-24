@@ -25,8 +25,8 @@ abstract final class AppSize {
 // TODO(owner): seed colour is provisional (DESIGN.md §2).
 const _seed = Color(0xFF1F5F5B);
 
-ThemeData appTheme() {
-  final scheme = ColorScheme.fromSeed(seedColor: _seed);
+ThemeData appTheme({Brightness brightness = Brightness.light}) {
+  final scheme = ColorScheme.fromSeed(seedColor: _seed, brightness: brightness);
   return ThemeData(
     colorScheme: scheme,
     useMaterial3: true,

@@ -1,6 +1,8 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:archive/archive.dart';
+
 import 'card_note.dart';
 import 'extractor.dart';
 import 'learned.dart';
@@ -79,6 +81,11 @@ class CardStore {
     return file;
   }
 
+  Directory get vaultDir => _dir('vault');
+
+  /// Every card note (stem -> markdown), for the history list.
+  Future<Map<String, String>> notes() async => _notes(await vaultDir.create(recursive: true));
+
   Future<Map<String, String>> _notes(Directory vault) async {
     final files = vault
         .listSync()
@@ -99,6 +106,27 @@ class CardStore {
     final file = File('${vault.path}/_名刺.vcf');
     await file.writeAsString(vcf);
     return (file, 'BEGIN:VCARD'.allMatches(vcf).length);
+  }
+
+  /// Reads a saved card back for the history screen; null if missing.
+  Future<StoredCard?> loadCard(String stem) async {
+    final f = File('${root.path}/golden/$stem.json');
+    if (!f.existsSync()) return null;
+    final j = jsonDecode(await f.readAsString()) as Map<String, dynamic>;
+    List<OcrLine> lines(String k) => [
+          for (final e in (j[k] as List? ?? const [])) OcrLine.fromJson(e as Map<String, dynamic>)
+        ];
+    final images = (j['images'] as Map?)?.cast<String, String>() ?? const {};
+    File? img(String side) =>
+        images[side] == null ? null : File('${root.path}/vault/${images[side]}');
+    return StoredCard(
+      stem: stem,
+      front: lines('front'),
+      back: lines('back'),
+      expected: (j['expected'] as Map).cast<String, String?>(),
+      frontImage: img('front'),
+      backImage: img('back'),
+    );
   }
 
   /// Rules learned from the user's corrections (`<root>/learned.json`).
@@ -131,6 +159,32 @@ class CardStore {
         mode: FileMode.append);
   }
 
+  /// `backup/meishi_backup_<date>_<time>.zip` with vault (notes + images),
+  /// golden JSON and learned.json. Returns the file and the entry count.
+  /// Everything needed to rebuild the history on another phone; the zip is
+  /// in the app's external folder for the Files app / adb to pick up.
+  Future<(File, int)> backup({DateTime? now}) async {
+    final t = now ?? DateTime.now();
+    String two(int n) => n.toString().padLeft(2, '0');
+    final stamp = '${t.year}-${two(t.month)}-${two(t.day)}_${two(t.hour)}${two(t.minute)}';
+    final archive = Archive();
+    for (final dir in ['vault', 'golden']) {
+      final d = _dir(dir);
+      if (!d.existsSync()) continue;
+      for (final f in d.listSync(recursive: true).whereType<File>()) {
+        final rel = f.path.substring(root.path.length + 1).replaceAll('\\', '/');
+        archive.add(ArchiveFile.bytes(rel, await f.readAsBytes()));
+      }
+    }
+    final learned = File('${root.path}/learned.json');
+    if (learned.existsSync()) {
+      archive.add(ArchiveFile.bytes('learned.json', await learned.readAsBytes()));
+    }
+    final out = File('${(await _dir('backup').create(recursive: true)).path}/meishi_backup_$stamp.zip');
+    await out.writeAsBytes(ZipEncoder().encodeBytes(archive));
+    return (out, archive.length);
+  }
+
   Future<void> appendError(String source, Object error) =>
       appendLog('errors.txt', '$source: $error');
 
@@ -139,6 +193,22 @@ class CardStore {
     await log.writeAsString('${DateTime.now().toIso8601String()} $line\n',
         mode: FileMode.append);
   }
+}
+
+/// A card as read back from the store.
+class StoredCard {
+  final String stem;
+  final List<OcrLine> front, back;
+  final Map<String, String?> expected;
+  final File? frontImage, backImage;
+  const StoredCard({
+    required this.stem,
+    required this.front,
+    required this.back,
+    required this.expected,
+    this.frontImage,
+    this.backImage,
+  });
 }
 
 /// `CardFields.toJson()` keys back onto a CardFields.
@@ -155,4 +225,5 @@ CardFields fieldsFromJson(Map<String, String?> j) => CardFields()
   ..email = j['email']
   ..url = j['url']
   ..postal = j['postal']
-  ..address = j['address'];
+  ..address = j['address']
+  ..memo = j['memo'];
