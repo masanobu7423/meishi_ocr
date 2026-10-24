@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'card_note.dart';
 import 'extractor.dart';
+import 'learned.dart';
 import 'ocr_line.dart';
 import 'vault_index.dart';
 import 'vcard_export.dart';
@@ -98,6 +99,36 @@ class CardStore {
     final file = File('${vault.path}/_名刺.vcf');
     await file.writeAsString(vcf);
     return (file, 'BEGIN:VCARD'.allMatches(vcf).length);
+  }
+
+  /// Rules learned from the user's corrections (`<root>/learned.json`).
+  Future<Learned> loadLearned() async {
+    final f = File('${root.path}/learned.json');
+    if (!f.existsSync()) return Learned();
+    try {
+      return Learned.fromJson(jsonDecode(await f.readAsString()) as Map<String, dynamic>);
+    } catch (e) {
+      await appendError('learned.json', e);
+      return Learned();
+    }
+  }
+
+  Future<void> saveLearned(Learned learned) => File('${root.path}/learned.json')
+      .writeAsString(const JsonEncoder.withIndent(' ').convert(learned.toJson()));
+
+  /// One JSON line per reviewed card that differed from the extractor's
+  /// guess: the raw material for future rules and for new golden fixtures.
+  Future<void> appendCorrection(
+      String stem, Map<String, String?> guess, Map<String, String?> corrected) async {
+    final changes = {
+      for (final k in corrected.keys)
+        if (corrected[k] != guess[k]) k: {'from': guess[k], 'to': corrected[k]},
+    };
+    if (changes.isEmpty) return;
+    final log = await File('${root.path}/log/corrections.jsonl').create(recursive: true);
+    await log.writeAsString(
+        '${jsonEncode({'at': DateTime.now().toIso8601String(), 'stem': stem, 'changes': changes})}\n',
+        mode: FileMode.append);
   }
 
   Future<void> appendError(String source, Object error) =>

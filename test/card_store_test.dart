@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:meishi_ocr/ocr/card_store.dart';
+import 'package:meishi_ocr/ocr/learned.dart';
 import 'package:meishi_ocr/ocr/ocr_line.dart';
 
 void main() {
@@ -76,6 +77,20 @@ void main() {
     await File('${inbox.path}/b.PNG').writeAsString('');
     await File('${inbox.path}/notes.txt').writeAsString('');
     expect((await store.inboxImages()).map((f) => f.uri.pathSegments.last), ['a.jpg', 'b.PNG']);
+  });
+
+  test('learned rules persist in learned.json and corrections are logged', () async {
+    expect((await store.loadLearned()).isEmpty, isTrue);
+    final learned = Learned()
+      ..learn(guess: {'company': null}, corrected: {'company': 'ABC'}, lines: [const OcrLine('ABC')]);
+    await store.saveLearned(learned);
+    expect((await store.loadLearned()).fieldFor('ABC'), 'company');
+
+    await store.appendCorrection('c1', {'company': null, 'name': 'x'}, {'company': 'ABC', 'name': 'x'});
+    final log = await File('${tmp.path}/log/corrections.jsonl').readAsLines();
+    final rec = jsonDecode(log.single) as Map<String, dynamic>;
+    expect(rec['stem'], 'c1');
+    expect(rec['changes'], {'company': {'from': null, 'to': 'ABC'}});
   });
 
   test('appendError appends one line per failure', () async {

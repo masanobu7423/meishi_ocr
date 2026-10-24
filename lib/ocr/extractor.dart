@@ -1,3 +1,4 @@
+import 'learned.dart';
 import 'ocr_line.dart';
 import 'romaji.dart';
 
@@ -10,6 +11,24 @@ class CardFields {
     'name', 'nameKana', 'nameRoman', 'company', 'dept', 'title',
     'phone', 'mobile', 'fax', 'email', 'url', 'postal', 'address',
   ];
+
+  void set(String key, String? v) {
+    switch (key) {
+      case 'name': name = v;
+      case 'nameKana': nameKana = v;
+      case 'nameRoman': nameRoman = v;
+      case 'company': company = v;
+      case 'dept': dept = v;
+      case 'title': title = v;
+      case 'phone': phone = v;
+      case 'mobile': mobile = v;
+      case 'fax': fax = v;
+      case 'email': email = v;
+      case 'url': url = v;
+      case 'postal': postal = v;
+      case 'address': address = v;
+    }
+  }
 
   Map<String, String?> toJson() => {
         'name': name,
@@ -106,8 +125,16 @@ class _L {
 /// their removal shrinks the pool), then keyword lines, then "the biggest
 /// remaining text is the name", which is the single most reliable rule on
 /// Japanese cards.
-CardFields extract(List<OcrLine> front, [List<OcrLine> back = const []]) {
+CardFields extract(List<OcrLine> front,
+        {List<OcrLine> back = const [], Learned? learned}) =>
+    extractWith(front, back, learned);
+
+/// [learned] adds the user's corrections: remembered lines, extra title /
+/// department words, and character fixes (see learned.dart).
+CardFields extractWith(List<OcrLine> front, List<OcrLine> back, Learned? learned) {
   final f = CardFields();
+  final titleRe = _withTerms(_title, learned?.terms['title']);
+  final deptLearned = learned?.terms['dept'].orEmpty ?? const <String>[];
   final pool = [
     for (final l in front) _L(l, true),
     for (final l in back) _L(l, false),
@@ -168,6 +195,20 @@ CardFields extract(List<OcrLine> front, [List<OcrLine> back = const []]) {
     if (l.rest.isEmpty) l.used = true;
   }
 
+  // 1b. Line memory: lines the user previously moved into a field go there
+  //     before any heuristic can misplace them.
+  if (learned != null) {
+    final taken = <String>{};
+    for (final l in pool.where((l) => !l.used)) {
+      final k = learned.fieldFor(l.rest);
+      if (k != null && !taken.contains(k)) {
+        f.set(k, l.rest);
+        taken.add(k);
+        l.used = true;
+      }
+    }
+  }
+
   // 2. Address: the postal line's remainder plus the following line, or a
   //    line that starts with a prefecture.
   // ponytail: one-line lookahead; add building/floor detection if golden
@@ -204,7 +245,7 @@ CardFields extract(List<OcrLine> front, [List<OcrLine> back = const []]) {
   final companyLine = companyLines.cast<_L?>().firstWhere(
       (l) => _cjk.hasMatch(l!.rest),
       orElse: () => companyLines.isEmpty ? null : companyLines.first);
-  if (companyLine != null) {
+  if (f.company == null && companyLine != null) {
     f.company = companyLine.rest;
     companyLine.used = true;
   }
@@ -214,7 +255,7 @@ CardFields extract(List<OcrLine> front, [List<OcrLine> back = const []]) {
     final tokens = l.rest.split(' ');
     final leftover = <String>[];
     for (final t in tokens) {
-      final tm = _title.firstMatch(t);
+      final tm = titleRe.firstMatch(t);
       if (tm != null) {
         // OCR drops the space in "営業課 課長" / "開発本部 シニアエンジニア":
         // split at the last department suffix before the title word.
@@ -226,7 +267,7 @@ CardFields extract(List<OcrLine> front, [List<OcrLine> back = const []]) {
         } else {
           addTitle(t);
         }
-      } else if (_dept.hasMatch(t)) {
+      } else if (_dept.hasMatch(t) || deptLearned.contains(t)) {
         addDept(t);
       } else {
         leftover.add(t);
@@ -242,10 +283,12 @@ CardFields extract(List<OcrLine> front, [List<OcrLine> back = const []]) {
   final remaining = frontLines.where((l) => !l.used).toList();
   _L? tallest(Iterable<_L> xs) =>
       xs.isEmpty ? null : xs.reduce((a, b) => b.h > a.h ? b : a);
-  final nameLine = tallest(remaining.where((l) =>
-      _cjk.hasMatch(l.rest) &&
-      !_kanaOnly.hasMatch(l.rest) &&
-      !_digit.hasMatch(l.rest)));
+  final nameLine = f.name != null
+      ? null
+      : tallest(remaining.where((l) =>
+          _cjk.hasMatch(l.rest) &&
+          !_kanaOnly.hasMatch(l.rest) &&
+          !_digit.hasMatch(l.rest)));
   if (nameLine != null) {
     // Tilted shots sometimes end the name with a stray '、' or '.'.
     f.name = nameLine.rest.replaceAll(RegExp(r'[、。,.・:;]+$'), '').trim();
@@ -273,5 +316,18 @@ CardFields extract(List<OcrLine> front, [List<OcrLine> back = const []]) {
       tallest(pool.where((l) => !l.front && roman(l))) ?? tallest(remaining.where(roman));
   if (romanLine != null) f.nameRoman = fixRomanSpacing(romanLine.rest);
 
+  // 6. Learned character confusions on the free-text fields.
+  if (learned != null) {
+    if (f.name != null) f.name = learned.fix(f.name!);
+    if (f.company != null) f.company = learned.fix(f.company!);
+  }
   return f;
+}
+
+RegExp _withTerms(RegExp base, List<String>? terms) => terms == null || terms.isEmpty
+    ? base
+    : RegExp('${base.pattern}|${terms.map(RegExp.escape).join('|')}');
+
+extension on List<String>? {
+  List<String> get orEmpty => this ?? const [];
 }

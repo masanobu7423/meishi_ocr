@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -10,6 +11,7 @@ import 'capture_screen.dart';
 import 'ocr/card_store.dart';
 import 'ocr/contact_mapper.dart';
 import 'ocr/extractor.dart';
+import 'ocr/learned.dart';
 import 'ocr/ocr_line.dart';
 import 'ocr/ocr_pipeline.dart';
 import 'ocr/review_queue.dart';
@@ -37,6 +39,7 @@ class _SpikePageState extends State<SpikePage> {
 
   List<OcrLine>? _front, _back;
   String? _frontPath, _backPath;
+  Learned _learned = Learned();
   CardFields? _fields;
   String _target = 'name';
   String _status = '表を撮影するか、アルバムから選んでください';
@@ -48,6 +51,7 @@ class _SpikePageState extends State<SpikePage> {
     final dir = (Platform.isAndroid ? await getExternalStorageDirectory() : null) ??
         await getApplicationDocumentsDirectory();
     final store = CardStore(dir);
+    _learned = await store.loadLearned();
     return (store, OcrPipeline(store));
   }
 
@@ -61,7 +65,9 @@ class _SpikePageState extends State<SpikePage> {
   }
 
   void _refill() {
-    _fields = _front == null ? null : extract(_front!, _back ?? const []);
+    _fields = _front == null
+        ? null
+        : extract(_front!, back: _back ?? const [], learned: _learned);
     final j = _fields?.toJson() ?? const {};
     for (final k in CardFields.keys) {
       _ctl[k]!.text = j[k] ?? '';
@@ -135,18 +141,28 @@ class _SpikePageState extends State<SpikePage> {
 
   // ---- save / register -----------------------------------------------------
 
+  /// Save the reviewed fields; whatever the user changed against the
+  /// extractor's guess is learned for the next card and logged.
   Future<void> _saveReviewed() async {
     final (store, _) = await _ready;
+    final stem = _source?.replaceAll('.json', '') ??
+        DateTime.now().toIso8601String().replaceAll(RegExp(r'[:.]'), '-');
+    final guess = _fields?.toJson() ?? const <String, String?>{};
+    final corrected = _reviewed();
     final f = await store.saveCard(
-        stem: _source?.replaceAll('.json', '') ??
-            DateTime.now().toIso8601String().replaceAll(RegExp(r'[:.]'), '-'),
+        stem: stem,
         front: _front!,
         back: _back ?? const [],
-        expected: _reviewed(),
+        expected: corrected,
         frontImage: _frontPath == null ? null : File(_frontPath!),
         backImage: _backPath == null ? null : File(_backPath!));
     _source = f.uri.pathSegments.last;
-    setState(() => _status = '保存: ${f.path}');
+    final before = jsonEncode(_learned.toJson());
+    _learned.learn(guess: guess, corrected: corrected, lines: [..._front!, ...?_back]);
+    final learnedSomething = jsonEncode(_learned.toJson()) != before;
+    if (learnedSomething) await store.saveLearned(_learned);
+    await store.appendCorrection(stem, guess, corrected);
+    setState(() => _status = '保存: ${f.path}${learnedSomething ? "（修正を学習しました）" : ""}');
   }
 
   /// Register the reviewed card in the device address book. Phone/email

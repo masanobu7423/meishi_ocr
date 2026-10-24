@@ -38,7 +38,7 @@ void main() {
     final strict = j['strict'] == true;
 
     test(name, () {
-      final got = extract(lines('front'), lines('back')).toJson();
+      final got = extract(lines('front'), back: lines('back')).toJson();
       for (final e in expected.entries) {
         final want = e.value as String?;
         if (want == null || want.isEmpty) {
