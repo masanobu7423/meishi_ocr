@@ -51,7 +51,28 @@ adb push card.jpg /sdcard/Android/data/jp.tobishoku.meishi_ocr/files/inbox/
 adb pull /sdcard/Android/data/jp.tobishoku.meishi_ocr/files/golden ./pulled
 ```
 
+## 電話帳登録（`lib/ocr/contact_mapper.dart`）
+
+**電話帳に登録** は flutter_contacts 2.x で端末の連絡先に書く。レビュー画面で修正した値をそのまま使う。
+
+- 氏名は「姓 名」で分割。ふりがなは名刺のかな行をカタカナ化、無ければローマ字行から変換
+  （`lib/ocr/romaji.dart`、ヘボン式 + 訓令式の一部。長音は推定しない: `Taro` → `タロ`）。
+- 電話 = 勤務先、携帯 = 携帯、FAX = 勤務先 FAX のラベル付き。会社・部署・役職は組織欄、住所は勤務先住所、
+  メモに `名刺取込 <日付> (<golden JSON 名>)`。
+- **重複検知**は電話番号（数字のみ比較、`+81` は `0` に畳む）とメール（大文字小文字無視）の完全一致のみ。
+  名前では判定しない（別人の田中さんを統合する方が被害が大きい）。一致時は「別人として追加 / 中止」の
+  2 択で、既存連絡先を自動更新する機能は意図的に無い。
+- 権限: Android `READ_CONTACTS` / `WRITE_CONTACTS`、iOS `NSContactsUsageDescription`。
+  iOS のメモ欄は Apple の entitlement が別途必要（未対応）。
+
+実機確認（P08 T）: 写真風名刺 → OCR → 登録で、姓名分割・ふりがな `ヤマダタロウ`・電話 3 件のラベル・メール・
+住所・組織・URL・メモが連絡先 DB に入ることを `adb shell content query` で確認済み。テスト用連絡先は削除済み。
+
 ## Obsidian ノート出力（`<外部領域>/vault/`）
+
+保存のたびに `_名刺一覧.md`（`lib/ocr/vault_index.dart`）も再生成する: 全名刺の表（氏名 / 会社 / 職種 / 地域 / 取込日）と
+**会社別・職種別・地域別**の人数と人名リンク。各ノートの frontmatter だけを読んで集計するので、Obsidian 側で
+ノートを手直ししても次回保存時に反映される。
 
 保存のたびに golden JSON と同じ項目から Obsidian 形式の MD を 1 枚 1 ファイルで書く
 （`lib/ocr/card_note.dart`）。FastaLife の vault パーサ（`ObsidianEngine`）がそのまま読める方言に合わせた:

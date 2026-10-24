@@ -41,7 +41,11 @@ void main() {
       final got = extract(lines('front'), lines('back')).toJson();
       for (final e in expected.entries) {
         final want = e.value as String?;
-        if (want == null || want.isEmpty) continue;
+        if (want == null || want.isEmpty) {
+          // An explicit null in a strict fixture means "must NOT be extracted".
+          if (strict) expect(got[e.key], isNull, reason: '$name field ${e.key}');
+          continue;
+        }
         totals[e.key] = (totals[e.key] ?? 0) + 1;
         if (_norm(got[e.key]) == _norm(want)) {
           hits[e.key] = (hits[e.key] ?? 0) + 1;

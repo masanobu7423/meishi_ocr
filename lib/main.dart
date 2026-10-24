@@ -6,9 +6,13 @@ import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart
 import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 
+import 'package:flutter_contacts/flutter_contacts.dart';
+
 import 'ocr/card_note.dart';
+import 'ocr/contact_mapper.dart';
 import 'ocr/extractor.dart';
 import 'ocr/ocr_line.dart';
+import 'ocr/vault_index.dart';
 
 // ponytail: Phase 0 spike. One screen: shoot front/back (or batch-import
 // images dropped into `<out>/inbox`), run on-device OCR, review fields by
@@ -111,17 +115,79 @@ class _SpikePageState extends State<SpikePage> {
       'back': (_back ?? const []).map((l) => l.toJson()).toList(),
       'expected': expected,
     }));
-    final fields = CardFields();
-    final j = fields.toJson(); // key order
-    for (final k in j.keys) {
-      _setField(fields, k, expected[k]);
-    }
+    final fields = _toFields(expected);
     final now = DateTime.now();
     final vault = await Directory('$out/vault').create(recursive: true);
     await File('${vault.path}/${cardNoteFilename(fields, now)}').writeAsString(
         cardNoteMarkdown(fields, scannedAt: now, vertical: vertical, source: '$stem.json'));
+    await _rebuildIndex(vault);
     return file;
   }
+
+  /// `_名刺一覧.md`: table + 会社別/職種別/地域別, rebuilt from every note's frontmatter.
+  Future<void> _rebuildIndex(Directory vault) async {
+    final files = vault
+        .listSync()
+        .whereType<File>()
+        .where((f) => f.path.endsWith('.md') && !f.uri.pathSegments.last.startsWith('_'))
+        .toList()
+      ..sort((a, b) => a.path.compareTo(b.path));
+    final notes = {
+      for (final f in files)
+        f.uri.pathSegments.last.replaceAll(RegExp(r'\.md$'), ''): await f.readAsString(),
+    };
+    await File('${vault.path}/_名刺一覧.md').writeAsString(buildIndex(notes));
+  }
+
+  CardFields _toFields(Map<String, String?> values) {
+    final fields = CardFields();
+    for (final k in CardFields.keys) {
+      _setField(fields, k, values[k]);
+    }
+    return fields;
+  }
+
+  Map<String, String?> _reviewed() => {
+        for (final k in CardFields.keys)
+          k: _ctl[k]!.text.trim().isEmpty ? null : _ctl[k]!.text.trim(),
+      };
+
+  /// Register the reviewed card in the device address book. Phone/email
+  /// matches against existing contacts are shown first; no silent merge.
+  Future<void> _registerContact() async {
+    final fields = _toFields(_reviewed());
+    if (fields.name == null) {
+      setState(() => _status = '氏名が空です');
+      return;
+    }
+    final perm = await FlutterContacts.permissions.request(PermissionType.readWrite);
+    if (perm != PermissionStatus.granted) {
+      setState(() => _status = '連絡先の権限がありません');
+      return;
+    }
+    final existing = await FlutterContacts.getAll(
+        properties: {ContactProperty.phone, ContactProperty.email});
+    final dup = findDuplicate(fields, existing);
+    if (dup != null && mounted) {
+      final go = await showDialog<bool>(
+        context: context,
+        builder: (c) => AlertDialog(
+          title: const Text('重複の可能性'),
+          content: Text('既存の連絡先「${dup.displayName ?? ''}」と電話番号またはメールが一致します。'),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('中止')),
+            FilledButton(onPressed: () => Navigator.pop(c, true), child: const Text('別人として追加')),
+          ],
+        ),
+      );
+      if (go != true) return;
+    }
+    final id = await FlutterContacts.create(
+        toContact(fields, scannedAt: DateTime.now(), source: _source));
+    setState(() => _status = '電話帳に登録しました (id $id)');
+  }
+
+  String? _source;
 
   static void _setField(CardFields f, String k, String? v) {
     switch (k) {
@@ -143,11 +209,8 @@ class _SpikePageState extends State<SpikePage> {
 
   /// Save with the reviewed (hand-corrected) field values.
   Future<void> _saveReviewed() async {
-    final expected = {
-      for (final k in CardFields.keys)
-        k: _ctl[k]!.text.trim().isEmpty ? null : _ctl[k]!.text.trim(),
-    };
-    final f = await _save(expected);
+    final f = await _save(_reviewed());
+    _source = f.uri.pathSegments.last;
     setState(() => _status = '保存: ${f.path}');
   }
 
@@ -202,6 +265,10 @@ class _SpikePageState extends State<SpikePage> {
                 FilledButton(
                   onPressed: _front == null ? null : _saveReviewed,
                   child: const Text('JSON保存'),
+                ),
+                FilledButton.tonal(
+                  onPressed: _front == null ? null : _registerContact,
+                  child: const Text('電話帳に登録'),
                 ),
               ],
             ),

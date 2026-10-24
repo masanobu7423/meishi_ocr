@@ -70,5 +70,7 @@
 	<string>名刺を撮影して文字を読み取るためにカメラを使用します。画像は端末外に送信しません。</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>保存済みの名刺画像を読み取るために写真ライブラリを使用します。</string>
+	<key>NSContactsUsageDescription</key>
+	<string>読み取った名刺の情報を連絡先に登録するために使用します。登録前に既存の連絡先との重複を確認します。</string>
 </dict>
 </plist>

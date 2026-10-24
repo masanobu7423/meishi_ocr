@@ -1,0 +1,20 @@
+{
+  "strict": true,
+  "note": "Synthetic (from a device dump): 'Mobi le' label split by OCR must not survive as the roman name; no roman name on this card.",
+  "front": [
+    {"text": "株式会社テスト", "l": 40, "t": 40, "w": 200, "h": 28},
+    {"text": "試験 太郎", "l": 40, "t": 120, "w": 240, "h": 56},
+    {"text": "TEL 03-1234-5678 FAX 03-1234-5679", "l": 40, "t": 300, "w": 420, "h": 20},
+    {"text": "Mobi le 090-1234-5678", "l": 40, "t": 325, "w": 240, "h": 20},
+    {"text": "E-ma il: test@example.co.jp", "l": 40, "t": 350, "w": 300, "h": 20}
+  ],
+  "expected": {
+    "name": "試験 太郎",
+    "nameRoman": null,
+    "company": "株式会社テスト",
+    "phone": "03-1234-5678",
+    "fax": "03-1234-5679",
+    "mobile": "090-1234-5678",
+    "email": "test@example.co.jp"
+  }
+}

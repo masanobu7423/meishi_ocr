@@ -37,6 +37,7 @@ dependencies:
   google_mlkit_text_recognition: ^0.16.0
   image_picker: ^1.2.4
   path_provider: ^2.1.6
+  flutter_contacts: ^2.1.0
 
 dev_dependencies:
   flutter_test:

@@ -1,4 +1,5 @@
 import 'ocr_line.dart';
+import 'romaji.dart';
 
 /// Structured fields pulled out of a business card.
 class CardFields {
@@ -160,7 +161,9 @@ CardFields extract(List<OcrLine> front, [List<OcrLine> back = const []]) {
         f.phone ??= num;
       }
     }
-    l.rest = l.rest.replaceAll(_phone, '').replaceAll(_label, '');
+    // "Mobi le" -> "Mobile" before label removal, or the fragment survives as
+    // a Latin line and gets picked as the roman name.
+    l.rest = fixRomanSpacing(l.rest.replaceAll(_phone, '')).replaceAll(_label, '');
     l.rest = normalize(l.rest).replaceAll(RegExp(r'^[:\s/|]+|[:\s/|]+$'), '');
     if (l.rest.isEmpty) l.used = true;
   }
@@ -265,9 +268,9 @@ CardFields extract(List<OcrLine> front, [List<OcrLine> back = const []]) {
   //    skipping company-looking lines.
   bool roman(_L l) =>
       !l.used && _latinOnly.hasMatch(l.rest) && !_company.hasMatch(l.rest);
-  f.nameRoman = (tallest(pool.where((l) => !l.front && roman(l))) ??
-          tallest(remaining.where(roman)))
-      ?.rest;
+  final romanLine =
+      tallest(pool.where((l) => !l.front && roman(l))) ?? tallest(remaining.where(roman));
+  if (romanLine != null) f.nameRoman = fixRomanSpacing(romanLine.rest);
 
   return f;
 }
