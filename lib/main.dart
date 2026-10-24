@@ -8,6 +8,7 @@ import 'package:path_provider/path_provider.dart';
 
 import 'package:flutter_contacts/flutter_contacts.dart';
 
+import 'capture_screen.dart';
 import 'ocr/card_note.dart';
 import 'ocr/contact_mapper.dart';
 import 'ocr/extractor.dart';
@@ -40,7 +41,7 @@ class _SpikePageState extends State<SpikePage> {
   List<OcrLine>? _front, _back;
   CardFields? _fields;
   String _target = 'name';
-  String _status = '表を撮影してください（長押しでギャラリー）';
+  String _status = '表を撮影してください（枠に合わせて撮影。長押しでギャラリー）';
   final _queue = ReviewQueue<QueuedCard>();
   // ML Kit must not be called concurrently (FastaLife's OcrService learned
   // this the hard way: native SIGSEGV), and two overlapping imports also
@@ -106,13 +107,21 @@ class _SpikePageState extends State<SpikePage> {
     return w.join('　');
   }
 
+  /// Camera = in-app capture screen with the card guide; gallery = picker.
   Future<void> _shoot(bool front, ImageSource source) async {
     if (_busy) return;
-    final x = await _picker.pickImage(source: source);
-    if (x == null) return;
+    String? path;
+    if (source == ImageSource.camera) {
+      path = await Navigator.push<String>(
+          context,
+          MaterialPageRoute(builder: (_) => CaptureScreen(label: front ? '表' : '裏')));
+    } else {
+      path = (await _picker.pickImage(source: source))?.path;
+    }
+    if (path == null) return;
     _busy = true;
     setState(() => _status = 'OCR中...');
-    final lines = await _ocr(front, x.path);
+    final lines = await _ocr(front, path);
     _busy = false;
     setState(() {
       if (front) {
