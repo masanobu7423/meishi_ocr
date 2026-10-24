@@ -1,0 +1,36 @@
+{
+  "strict": true,
+  "note": "Synthetic: typical horizontal card, keyword company, kana reading above name, English back.",
+  "front": [
+    {"text": "株式会社サンライズ", "l": 40, "t": 40, "w": 300, "h": 28},
+    {"text": "営業部　部長", "l": 40, "t": 110, "w": 160, "h": 22},
+    {"text": "やまだ たろう", "l": 40, "t": 150, "w": 180, "h": 18},
+    {"text": "山田 太郎", "l": 40, "t": 175, "w": 260, "h": 56},
+    {"text": "〒１５０-０００１ 東京都渋谷区神宮前1-2-3", "l": 40, "t": 300, "w": 500, "h": 20},
+    {"text": "サンライズビル5F", "l": 40, "t": 325, "w": 200, "h": 20},
+    {"text": "TEL 03-1234-5678 FAX 03-1234-5679", "l": 40, "t": 350, "w": 420, "h": 20},
+    {"text": "Mobile 090-1234-5678", "l": 40, "t": 375, "w": 240, "h": 20},
+    {"text": "taro.yamada@sunrise.co.jp", "l": 40, "t": 400, "w": 300, "h": 20},
+    {"text": "https://www.sunrise.co.jp", "l": 40, "t": 425, "w": 300, "h": 20}
+  ],
+  "back": [
+    {"text": "SUNRISE Inc.", "l": 40, "t": 40, "w": 200, "h": 28},
+    {"text": "Taro Yamada", "l": 40, "t": 180, "w": 300, "h": 50},
+    {"text": "Sales Department, General Manager", "l": 40, "t": 250, "w": 400, "h": 20}
+  ],
+  "expected": {
+    "name": "山田 太郎",
+    "nameKana": "やまだ たろう",
+    "nameRoman": "Taro Yamada",
+    "company": "株式会社サンライズ",
+    "dept": "営業部",
+    "title": "部長",
+    "phone": "03-1234-5678",
+    "mobile": "090-1234-5678",
+    "fax": "03-1234-5679",
+    "email": "taro.yamada@sunrise.co.jp",
+    "url": "https://www.sunrise.co.jp",
+    "postal": "150-0001",
+    "address": "東京都渋谷区神宮前1-2-3 サンライズビル5F"
+  }
+}

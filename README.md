@@ -1,0 +1,105 @@
+# meishi_ocr — Phase 0 スパイク
+
+端末内（オフライン）で動く日本語名刺 OCR アプリの Go / No-Go 判定用スパイク。
+「Flutter + ML Kit で作る価値が iOS Live Text / Google レンズに対してあるか」を測るための
+使い捨てコードであり、製品コードではない。
+
+## 構成
+
+| パス | 役割 |
+|---|---|
+| `lib/ocr/ocr_line.dart` | ML Kit `TextLine` の必要部分（文字列 + 矩形）。JSON 往復可 |
+| `lib/ocr/extractor.dart` | 純 Dart の項目抽出器（パターン → キーワード → 最大文字高さ = 氏名）。縦書き判定 `isVertical`、必須項目欠落 `missingCore` も同居 |
+| `lib/main.dart` | 1 画面: 表裏撮影 → OCR → 項目レビュー（OCR 行チップをタップして項目へ割当） → golden JSON 保存。inbox 一括取込あり |
+| `test/golden_test.dart` | 精度計測ハーネス。`test/golden/*.json` の項目別ヒット率を表で出力 |
+| `test/golden/0xx_*.json` | 合成フィクスチャ。`strict: true` で完全一致を要求（抽出器の回帰テスト） |
+| `test/golden/1xx_*.json` | 実機 OCR ダンプ（合成名刺のクリーン描画）。`strict: false`、精度表のみに寄与 |
+| `test/golden/2xx_*.json` | 実機 OCR ダンプ（写真風に劣化させた描画: 台形歪み・ぼかし・ノイズ・影） |
+| `lib/ocr/card_note.dart` | 名刺 1 枚 → Obsidian MD（frontmatter + `#タグ` + `[[リンク]]`）。`test/card_note_test.dart` が形式を固定 |
+| `android/app/proguard-rules.pro` | 未同梱スクリプト（中国語・デーヴァナーガリー・韓国語）の `-dontwarn`。リリースビルドに必須 |
+
+## Phase 0 の手順
+
+1. Android 実機で `flutter run`（iOS は Mac で `pod install` が先に必要）。
+2. 実名刺 30 枚程度（縦書き・横書き・英語裏面・デザイン名刺を混ぜる）について、
+   **表を撮影** → 必要なら **裏を撮影** → 画面で項目を修正（チップをタップで割当）→ **JSON保存**。
+   撮影ボタン長押しでギャラリーから選択。
+3. JSON を取り出す（Android は外部ストレージのアプリ領域に出るので `run-as` 不要）:
+   ```bash
+   MSYS_NO_PATHCONV=1 adb pull /sdcard/Android/data/jp.tobishoku.meishi_ocr/files/golden ./pulled
+   ```
+4. 各 JSON の `expected` を目視で確定し（名刺に無い項目は `null`）、`NNN_<メモ>.json` に改名して
+   `test/golden/` へ。`strict` は `false` のまま。
+5. `flutter test` で精度表が出る。判定基準:
+   - 氏名 80 % 以上かつ電話・メール 95 % 以上 → Phase 1 へ
+   - 氏名 60〜80 % → レイアウト解析を改善して再計測
+   - 氏名 60 % 未満 → 中止（Live Text で足りる）
+6. 同じ 30 枚を iOS Live Text（カメラ → テキスト選択 → 連絡先に追加）に通し、氏名・会社が使える形で
+   出たかを 1 枚ずつ記録。差が出なければ中止。
+
+### 一括取込（ピッカー不要）
+
+アプリバーのフォルダアイコンは `<外部領域>/inbox` の画像をすべて表面として OCR し、
+1 枚 1 JSON を `golden/` に書く（`expected` には抽出器の推定値が入る）。
+inbox フォルダは**アプリに作らせる**（最初に一度アイコンを押す）。`adb shell mkdir` で作った
+フォルダは Android 11 以降アプリから読めない。
+
+```bash
+export MSYS_NO_PATHCONV=1   # Git Bash が /sdcard を Windows パスに変換するのを防ぐ
+adb push card.jpg /sdcard/Android/data/jp.tobishoku.meishi_ocr/files/inbox/
+# フォルダアイコンをタップ → 完了後
+adb pull /sdcard/Android/data/jp.tobishoku.meishi_ocr/files/golden ./pulled
+```
+
+## Obsidian ノート出力（`<外部領域>/vault/`）
+
+保存のたびに golden JSON と同じ項目から Obsidian 形式の MD を 1 枚 1 ファイルで書く
+（`lib/ocr/card_note.dart`）。FastaLife の vault パーサ（`ObsidianEngine`）がそのまま読める方言に合わせた:
+
+- frontmatter はフラットな `key: value` のみ（`name` `kana` `roman` `company` `dept` `title` `job`
+  `phone` `mobile` `fax` `email` `url` `postal` `pref` `city` `address` `scanned` `vertical` `source`）。
+- `tags: [a, b]` を 1 行で。ネストタグ `#a/b` は FastaLife 側が `/` を読めないので `_` 区切り:
+  `#会社_サンライズ #職種_営業 #役職_部長 #部署_営業部 #地域_東京都 #市区_渋谷区 #市外局番_03 #ドメイン_sunrise_co_jp #取込_2026-10`。
+  縦書き名刺には `#縦書き` が付くので、要確認ノートをタグで絞り込める。
+- `[[会社名]]` `[[都道府県]]` `[[職種_○○]]` をリンクにして、バックリンク／グラフで「同じ会社の人」「同じ県の人」
+  「同じ職種」が辿れる。
+- 職種（`job`）は部署・役職語からの 13 分類（営業 / 販売 / 技術開発 / 経営 / 製造 / 管理 / マーケティング / 企画 /
+  デザイン / コンサルティング / 研究 / 調達 / 医療）。実名刺で外れた語を見てから表を増やす。
+- ファイル名は `<氏名>_<yyyy-mm-dd>.md`（FastaLife と同じ禁止文字セットで `_` 置換）。
+
+FastaLife の OCR から流用したもの: 全角→半角と `1O2`→`102` / `1l2`→`112` の数字誤読補正（`blood_test_parser_extraction.dart` の
+`_normalizeOcrText` 相当）、OCR → 表 → vault ノート → グラフ登録というパイプライン構成。ML Kit のネイティブ呼び出しを
+直列化する `OcrService` の排他制御は、本スパイクが 1 枚ずつしか処理しないため未導入（連写モードを入れる時に必要）。
+
+## 計測（2026-10-24、P08 T / Android 16、合成名刺 5 種 × クリーン描画 + 写真風劣化）
+
+写真風劣化 = 机の背景に置いて台形歪み・ガウスぼかし・ノイズ・影のグラデーション・±3° 回転・2/3 縮小・JPEG。
+
+| 項目 | 全 13 枚 | 縦書きを除く 11 枚 | 備考 |
+|---|---|---|---|
+| name | 13/13 | 11/11 | 「最大文字高さの CJK 行 = 氏名」が全レイアウトで成立 |
+| phone / mobile / fax | 100 % | 100 % | `FAX: 019-62 3-1235` の数字内空白、`ー`→`-` を補正 |
+| email / url | 100 % | 100 % | `taro. yamada@sunr ise. co. jp` の空白、`@`→`ê` 誤読を補正 |
+| company | 12/13 | 11/11 | 外れは縦書きの文字誤読（`印刷`→`印選`） |
+| dept / title | 100 % / 12/13 | 100 % | `開発本部シニアエンジニア` の無空白連結を部署接尾辞で分割 |
+| postal / address | 11/13 | 11/11 | 外れは縦書き 2 枚（`〒980-0811` が `〒のo01081ー`） |
+
+- リリース APK（日本語モデル同梱、R8 有効）: **77.0 MB**。デバッグ APK は 197 MB。
+- リリースビルドには `android/app/proguard-rules.pro` の `-dontwarn com.google.mlkit.vision.text.(chinese|devanagari|korean).**`
+  が必須。プラグインが全スクリプトのクラスを参照しているため、無いと `minifyReleaseWithR8` が落ちる。
+
+### 分かったこと（忖度なし）
+
+- **Android は `implementation("com.google.mlkit:text-recognition-japanese:16.0.1")` が必須。**
+  プラグインは `compileOnly` 宣言のみで、無いと `NoClassDefFoundError: JapaneseTextRecognizerOptions`
+  で即クラッシュする。出回っているサンプルコードはこれを書いていない。
+- **縦書きは ML Kit の構造的弱点。** 縦 1 列が 1 行として返り、数字列はほぼ破壊される。
+  90 度回転しても文字が横倒しになるだけで改善しない。`isVertical` で検出して「要手動確認」と
+  出すのが現実的な対処で、精度を上げる手段は端末内 LLM か別エンジンしかない。
+- 合成描画は実写より易しい。写真風劣化でも数字・メールは補正で 100% に戻せたが、
+  実写では紙の反射・手ブレ・小さすぎる文字で OCR 行そのものが欠ける。判定基準は実名刺 30 枚に対して適用する。
+- ローマ字名に `Takahash i` のような単語内空白が残る（補正未実装。氏名は目視修正前提なので放置）。
+
+## このスパイクで意図的に作らないもの
+
+連絡先への書込、重複検知、連写モード、共有機能、縦書きの回転リトライ（効果がないため）。

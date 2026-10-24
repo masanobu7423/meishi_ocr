@@ -1,0 +1,24 @@
+{
+  "strict": true,
+  "note": "Synthetic: company without 株式会社 keyword (fallback), title only, roman name on front, no back.",
+  "front": [
+    {"text": "トビショク商事", "l": 40, "t": 40, "w": 260, "h": 26},
+    {"text": "代表取締役社長", "l": 40, "t": 120, "w": 180, "h": 18},
+    {"text": "鈴木 一郎", "l": 40, "t": 150, "w": 240, "h": 50},
+    {"text": "SUZUKI Ichiro", "l": 40, "t": 210, "w": 200, "h": 20},
+    {"text": "〒530-0001", "l": 40, "t": 300, "w": 120, "h": 16},
+    {"text": "大阪府大阪市北区梅田1-1-1", "l": 40, "t": 320, "w": 320, "h": 16},
+    {"text": "TEL: 06-6123-4567", "l": 40, "t": 345, "w": 200, "h": 16},
+    {"text": "info@tobishoku.example", "l": 40, "t": 370, "w": 260, "h": 16}
+  ],
+  "expected": {
+    "name": "鈴木 一郎",
+    "nameRoman": "SUZUKI Ichiro",
+    "company": "トビショク商事",
+    "title": "代表取締役社長",
+    "phone": "06-6123-4567",
+    "email": "info@tobishoku.example",
+    "postal": "530-0001",
+    "address": "大阪府大阪市北区梅田1-1-1"
+  }
+}

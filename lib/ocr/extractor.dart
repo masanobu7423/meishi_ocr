@@ -1,0 +1,273 @@
+import 'ocr_line.dart';
+
+/// Structured fields pulled out of a business card.
+class CardFields {
+  String? name, nameKana, nameRoman, company, dept, title;
+  String? phone, mobile, fax, email, url, postal, address;
+
+  static const keys = [
+    'name', 'nameKana', 'nameRoman', 'company', 'dept', 'title',
+    'phone', 'mobile', 'fax', 'email', 'url', 'postal', 'address',
+  ];
+
+  Map<String, String?> toJson() => {
+        'name': name,
+        'nameKana': nameKana,
+        'nameRoman': nameRoman,
+        'company': company,
+        'dept': dept,
+        'title': title,
+        'phone': phone,
+        'mobile': mobile,
+        'fax': fax,
+        'email': email,
+        'url': url,
+        'postal': postal,
+        'address': address,
+      };
+}
+
+/// Full-width ASCII -> half-width, ideographic space -> space, collapse runs,
+/// and the digit confusions FastaLife's blood-test parser learned to fix:
+/// `1O2` -> `102`, `1l2` -> `112`, `O3-` -> `03-`.
+String normalize(String s) => s
+    .replaceAllMapped(RegExp(r'[！-～]'),
+        (m) => String.fromCharCode(m[0]!.codeUnitAt(0) - 0xFEE0))
+    .replaceAll('　', ' ')
+    // long-vowel mark read in place of a hyphen, only between digits (keeps マネージャー intact)
+    .replaceAllMapped(RegExp(r'(\d)ー(?=\d)'), (m) => '${m[1]}-')
+    .replaceAllMapped(RegExp(r'(\d)[Oo](\d)'), (m) => '${m[1]}0${m[2]}')
+    .replaceAllMapped(RegExp(r'(\d)[lI](\d)'), (m) => '${m[1]}1${m[2]}')
+    .replaceAllMapped(RegExp(r'(?<![A-Za-z])O(?=\d{1,3}-)'), (m) => '0')
+    .replaceAll(RegExp(r'\s+'), ' ')
+    .trim();
+
+final _email = RegExp(r'[\w.+-]+@[\w-]+(?:\.[\w-]+)+');
+final _url = RegExp(r'(?:https?://|www\.)\S+', caseSensitive: false);
+final _postal = RegExp(r'〒\s*(\d{3})-?(\d{4})');
+// A line that is nothing but "150-0001" (no 〒). Anchored so 090-1234 inside a
+// phone number never qualifies.
+final _postalBare = RegExp(r'^(\d{3})-(\d{4})$');
+// +81 3-1234-5678 / +81-90-… / +81 (0)3-… -> domestic form before matching.
+final _intl = RegExp(r'\+81[-\s]?\(?0?\)?[-\s]?');
+final _phone =
+    RegExp(r'(?<!\d)(0\d{1,4})[-.\s()]*(\d{1,4})[-.\s()]*(\d{3,4})(?!\d)');
+final _fax = RegExp(r'fax', caseSensitive: false);
+final _label = RegExp(
+    r'\b(TEL|FAX|PHONE|MOBILE|E-?MAIL|MAIL|URL|HP|WEB)\b\s*[:.]?|(電話|携帯|メール)\s*[:.]?',
+    caseSensitive: false);
+final _company = RegExp(
+    r'株式会社|有限会社|合同会社|\(株\)|㈱|\bInc\b|Co\.,? ?Ltd|\bCorp(?:oration)?\b|\bLLC\b|K\.K\.|Company',
+    caseSensitive: false);
+final _title = RegExp(
+    r'代表取締役|取締役|執行役員|社長|会長|専務|常務|部長|次長|課長|係長|主任|室長|所長|支店長|工場長|マネージャー|リーダー|エンジニア|デザイナー|コンサルタント|ディレクター|プロデューサー|担当|CEO|CTO|CFO|COO|President|Director|Manager|Engineer');
+final _deptSuffix = r'本部|事業部|支店|営業所|部|課|室|係|グループ|チーム|センター|研究所';
+final _dept = RegExp('($_deptSuffix)\$');
+final _deptAny = RegExp('($_deptSuffix)');
+final _prefecture = RegExp(r'^(東京都|北海道|京都府|大阪府|.{2,3}県)');
+final _kanaOnly = RegExp(r'^[぀-ゟ゠-ヿ\s]+$');
+final _latinOnly = RegExp(r"^[A-Za-z .\-']+$");
+final _cjk = RegExp(r'[぀-ヿ一-鿿]');
+final _digit = RegExp(r'\d');
+
+/// True when most multi-character lines are taller than wide, i.e. ML Kit
+/// returned vertical (縦書き) columns as single "lines". Field accuracy on
+/// such cards is low (digits in a column come back as garbage), so callers
+/// should flag the card for manual review rather than trust the fields.
+bool isVertical(List<OcrLine> lines) {
+  final multi = lines.where((l) => l.text.trim().length >= 3).toList();
+  if (multi.length < 2) return false;
+  final tall = multi.where((l) => l.height > 1.5 * l.width).length;
+  return tall * 2 >= multi.length;
+}
+
+/// Core fields a usable contact needs; empty list = nothing to review.
+List<String> missingCore(CardFields f) => [
+      if (f.name == null) 'name',
+      if (f.company == null) 'company',
+      if (f.phone == null && f.mobile == null) 'phone',
+      if (f.email == null) 'email',
+    ];
+
+class _L {
+  final OcrLine src;
+  final bool front;
+  String rest;
+  bool used = false;
+  _L(this.src, this.front) : rest = normalize(src.text);
+  double get h => src.height;
+}
+
+/// Extracts card fields from the front (Japanese model) and optional back
+/// (Latin model) OCR lines.
+///
+/// Order matters: machine-readable patterns first (they are unambiguous and
+/// their removal shrinks the pool), then keyword lines, then "the biggest
+/// remaining text is the name", which is the single most reliable rule on
+/// Japanese cards.
+CardFields extract(List<OcrLine> front, [List<OcrLine> back = const []]) {
+  final f = CardFields();
+  final pool = [
+    for (final l in front) _L(l, true),
+    for (final l in back) _L(l, false),
+  ];
+
+  // 1. Patterns: email, url, postal, phone/fax/mobile.
+  _L? postalLine;
+  for (final l in pool) {
+    // ML Kit's Japanese model emits "taro. yamada@sunr ise. co. jp" (spaces
+    // after dots, and inside words on photos). An address/URL never contains
+    // whitespace, so drop the labels and then every space on such lines.
+    // ponytail: '@' read as 'ê' on a dark card; fix only inside an email shape.
+    l.rest = l.rest.replaceAllMapped(
+        RegExp(r'([\w.+-]+)\s*[êéè]\s*([\w-]+(?:\.\s*[\w-]+)+)'),
+        (m) => '${m[1]}@${m[2]}');
+    if (l.rest.contains('@') || _url.hasMatch(l.rest)) {
+      l.rest = l.rest.replaceAll(_label, '').replaceAll(RegExp(r'\s+'), '');
+    }
+    // "FAX: 019-62 3-1235": on labelled phone lines a space between digits is noise.
+    if (RegExp(r'TEL|FAX|PHONE|MOBILE|電話|携帯', caseSensitive: false).hasMatch(l.rest)) {
+      l.rest = l.rest.replaceAllMapped(RegExp(r'(\d)\s+(?=[\d-])'), (m) => m[1]!);
+    }
+    for (final m in _email.allMatches(l.rest)) {
+      f.email ??= m[0]!.toLowerCase();
+    }
+    l.rest = l.rest.replaceAll(_email, '');
+    for (final m in _url.allMatches(l.rest)) {
+      // ponytail: lowercasing the path too; fine for business-card URLs.
+      f.url ??= m[0]!.toLowerCase();
+    }
+    l.rest = l.rest.replaceAll(_url, '');
+    final pm = _postal.firstMatch(l.rest) ?? _postalBare.firstMatch(l.rest);
+    if (pm != null) {
+      f.postal ??= '${pm[1]}-${pm[2]}';
+      postalLine ??= l;
+      l.rest = l.rest.replaceAll(_postal, '').replaceAll(_postalBare, '');
+    }
+    l.rest = l.rest.replaceAll(_intl, '0');
+    var cursor = 0;
+    for (final m in _phone.allMatches(l.rest)) {
+      final digits = '${m[1]}${m[2]}${m[3]}';
+      if (digits.length < 10 || digits.length > 11) continue;
+      final label = l.rest.substring(cursor, m.start);
+      cursor = m.end;
+      final num = '${m[1]}-${m[2]}-${m[3]}';
+      if (_fax.hasMatch(label)) {
+        f.fax ??= num;
+      } else if (RegExp(r'^0[789]0').hasMatch(num)) {
+        f.mobile ??= num;
+      } else {
+        f.phone ??= num;
+      }
+    }
+    l.rest = l.rest.replaceAll(_phone, '').replaceAll(_label, '');
+    l.rest = normalize(l.rest).replaceAll(RegExp(r'^[:\s/|]+|[:\s/|]+$'), '');
+    if (l.rest.isEmpty) l.used = true;
+  }
+
+  // 2. Address: the postal line's remainder plus the following line, or a
+  //    line that starts with a prefecture.
+  // ponytail: one-line lookahead; add building/floor detection if golden
+  // cards show addresses wrapping over 3+ lines.
+  final frontLines = pool.where((l) => l.front).toList();
+  _L? seed = postalLine ??
+      frontLines.cast<_L?>().firstWhere(
+          (l) => !l!.used && _prefecture.hasMatch(l.rest),
+          orElse: () => null);
+  if (seed != null) {
+    final parts = <String>[seed.rest];
+    seed.used = true;
+    final i = pool.indexOf(seed);
+    if (i + 1 < pool.length) {
+      final next = pool[i + 1];
+      if (!next.used &&
+          next.front == seed.front &&
+          !_company.hasMatch(next.rest) &&
+          !_title.hasMatch(next.rest) &&
+          !_kanaOnly.hasMatch(next.rest)) {
+        parts.add(next.rest);
+        next.used = true;
+      }
+    }
+    f.address = parts.where((p) => p.isNotEmpty).join(' ');
+    if (f.address!.isEmpty) f.address = null;
+  }
+
+  // 3. Keyword lines on the front: company (prefer the Japanese line when a
+  //    card carries both "NEXTWAVE Inc." and "ネクストウェーブ株式会社"),
+  //    then title / department tokens.
+  final companyLines =
+      frontLines.where((l) => !l.used && _company.hasMatch(l.rest)).toList();
+  final companyLine = companyLines.cast<_L?>().firstWhere(
+      (l) => _cjk.hasMatch(l!.rest),
+      orElse: () => companyLines.isEmpty ? null : companyLines.first);
+  if (companyLine != null) {
+    f.company = companyLine.rest;
+    companyLine.used = true;
+  }
+  void addTitle(String t) => f.title = f.title == null ? t : '${f.title} $t';
+  void addDept(String t) => f.dept = f.dept == null ? t : '${f.dept} $t';
+  for (final l in frontLines.where((l) => !l.used)) {
+    final tokens = l.rest.split(' ');
+    final leftover = <String>[];
+    for (final t in tokens) {
+      final tm = _title.firstMatch(t);
+      if (tm != null) {
+        // OCR drops the space in "営業課 課長" / "開発本部 シニアエンジニア":
+        // split at the last department suffix before the title word.
+        final prefix = t.substring(0, tm.start);
+        final dm = _deptAny.allMatches(prefix).lastOrNull;
+        if (dm != null) {
+          addDept(prefix.substring(0, dm.end));
+          addTitle(t.substring(dm.end));
+        } else {
+          addTitle(t);
+        }
+      } else if (_dept.hasMatch(t)) {
+        addDept(t);
+      } else {
+        leftover.add(t);
+      }
+    }
+    if (leftover.length < tokens.length) {
+      l.rest = leftover.join(' ');
+      if (l.rest.isEmpty) l.used = true;
+    }
+  }
+
+  // 4. Name = tallest remaining CJK line on the front. Kana-only line = reading.
+  final remaining = frontLines.where((l) => !l.used).toList();
+  _L? tallest(Iterable<_L> xs) =>
+      xs.isEmpty ? null : xs.reduce((a, b) => b.h > a.h ? b : a);
+  final nameLine = tallest(remaining.where((l) =>
+      _cjk.hasMatch(l.rest) &&
+      !_kanaOnly.hasMatch(l.rest) &&
+      !_digit.hasMatch(l.rest)));
+  if (nameLine != null) {
+    f.name = nameLine.rest;
+    nameLine.used = true;
+    final kana = tallest(remaining.where(
+        (l) => !l.used && _kanaOnly.hasMatch(l.rest) && l.h < nameLine.h));
+    if (kana != null) {
+      f.nameKana = kana.rest;
+      kana.used = true;
+    }
+  }
+
+  // ponytail: company without a 株式会社-style keyword = tallest remaining CJK
+  // line that is not the name. Replace with a logo/position heuristic if the
+  // golden set shows this picking departments.
+  f.company ??= tallest(remaining.where(
+          (l) => !l.used && _cjk.hasMatch(l.rest) && !_digit.hasMatch(l.rest)))
+      ?.rest;
+
+  // 5. Roman name: tallest Latin-only line on the back, else on the front,
+  //    skipping company-looking lines.
+  bool roman(_L l) =>
+      !l.used && _latinOnly.hasMatch(l.rest) && !_company.hasMatch(l.rest);
+  f.nameRoman = (tallest(pool.where((l) => !l.front && roman(l))) ??
+          tallest(remaining.where(roman)))
+      ?.rest;
+
+  return f;
+}

@@ -1,0 +1,67 @@
+{
+ "strict": false,
+ "vertical": false,
+ "front": [
+  {
+   "text": "トビショク商事",
+   "l": 682.0,
+   "t": 177.0,
+   "w": 219.0,
+   "h": 39.0
+  },
+  {
+   "text": "代表取締役社長",
+   "l": 719.0,
+   "t": 293.0,
+   "w": 164.0,
+   "h": 30.0
+  },
+  {
+   "text": "鈴木 一郎",
+   "l": 643.0,
+   "t": 343.0,
+   "w": 330.0,
+   "h": 84.0
+  },
+  {
+   "text": "SUZUKI Ichiro",
+   "l": 732.0,
+   "t": 446.0,
+   "w": 172.0,
+   "h": 32.0
+  },
+  {
+   "text": "〒530-0001 大阪府大阪市北区梅田1-1-1",
+   "l": 612.0,
+   "t": 592.0,
+   "w": 436.0,
+   "h": 51.0
+  },
+  {
+   "text": "TEL: 06-6123-4567",
+   "l": 734.0,
+   "t": 650.0,
+   "w": 210.0,
+   "h": 35.0
+  },
+  {
+   "text": "info@tob i shoku. example",
+   "l": 712.0,
+   "t": 694.0,
+   "w": 267.0,
+   "h": 43.0
+  }
+ ],
+ "back": [],
+ "expected": {
+  "name": "鈴木 一郎",
+  "nameRoman": "SUZUKI Ichiro",
+  "company": "トビショク商事",
+  "title": "代表取締役社長",
+  "phone": "06-6123-4567",
+  "email": "info@tobishoku.example",
+  "postal": "530-0001",
+  "address": "大阪府大阪市北区梅田1-1-1"
+ },
+ "note": "Device OCR (P08 T, ML Kit ja) of photo-like degraded render p02_nokeyword_center.jpg (perspective, blur, noise, shadow)"
+}

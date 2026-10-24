@@ -1,0 +1,75 @@
+{
+ "strict": false,
+ "vertical": false,
+ "front": [
+  {
+   "text": "NEXTWAVE Inc.",
+   "l": 1091.0,
+   "t": 197.0,
+   "w": 245.0,
+   "h": 50.0
+  },
+  {
+   "text": "ネクストウェーブ株式会社",
+   "l": 1044.0,
+   "t": 250.0,
+   "w": 299.0,
+   "h": 42.0
+  },
+  {
+   "text": "高橋美咲",
+   "l": 984.0,
+   "t": 397.0,
+   "w": 343.0,
+   "h": 93.0
+  },
+  {
+   "text": "Misaki Takahash i",
+   "l": 1105.0,
+   "t": 492.0,
+   "w": 214.0,
+   "h": 44.0
+  },
+  {
+   "text": "プロダクト開発本部シニアエンジニア",
+   "l": 894.0,
+   "t": 540.0,
+   "w": 421.0,
+   "h": 50.0
+  },
+  {
+   "text": "〒220-0012 神奈川県横浜市西区みなとみらい2-2-1",
+   "l": 779.0,
+   "t": 647.0,
+   "w": 523.0,
+   "h": 56.0
+  },
+  {
+   "text": "横浜ランドマークタワー 20F",
+   "l": 1001.0,
+   "t": 703.0,
+   "w": 299.0,
+   "h": 40.0
+  },
+  {
+   "text": "080-9876-5432 / m. takahashiênextwave. dev",
+   "l": 834.0,
+   "t": 738.0,
+   "w": 461.0,
+   "h": 55.0
+  }
+ ],
+ "back": [],
+ "expected": {
+  "name": "高橋 美咲",
+  "nameRoman": "Misaki Takahashi",
+  "company": "ネクストウェーブ株式会社",
+  "dept": "プロダクト開発本部",
+  "title": "シニアエンジニア",
+  "mobile": "080-9876-5432",
+  "email": "m.takahashi@nextwave.dev",
+  "postal": "220-0012",
+  "address": "神奈川県横浜市西区みなとみらい2-2-1 横浜ランドマークタワー 20F"
+ },
+ "note": "Device OCR (P08 T, ML Kit ja) of photo-like degraded render p04_dark_right.jpg (perspective, blur, noise, shadow)"
+}
