@@ -12,7 +12,12 @@ import 'ocr/card_note.dart';
 import 'ocr/contact_mapper.dart';
 import 'ocr/extractor.dart';
 import 'ocr/ocr_line.dart';
+import 'ocr/review_queue.dart';
 import 'ocr/vault_index.dart';
+import 'ocr/vcard_export.dart';
+
+/// One imported card waiting for review.
+typedef QueuedCard = ({String stem, List<OcrLine> front});
 
 // ponytail: Phase 0 spike. One screen: shoot front/back (or batch-import
 // images dropped into `<out>/inbox`), run on-device OCR, review fields by
@@ -36,6 +41,11 @@ class _SpikePageState extends State<SpikePage> {
   CardFields? _fields;
   String _target = 'name';
   String _status = '表を撮影してください（長押しでギャラリー）';
+  final _queue = ReviewQueue<QueuedCard>();
+  // ML Kit must not be called concurrently (FastaLife's OcrService learned
+  // this the hard way: native SIGSEGV), and two overlapping imports also
+  // interleave their state. One job at a time.
+  bool _busy = false;
 
   @override
   void dispose() {
@@ -53,18 +63,30 @@ class _SpikePageState extends State<SpikePage> {
       (Platform.isAndroid ? await getExternalStorageDirectory() : null) ??
       await getApplicationDocumentsDirectory();
 
+  /// Runs ML Kit on one image. A failure (unreadable file, native error)
+  /// returns an empty list and is appended to `<out>/log/errors.txt` so a
+  /// batch of 30 does not die on card 7.
   Future<List<OcrLine>> _ocr(bool front, String path) async {
-    final rec =
-        await (front ? _jp : _latin).processImage(InputImage.fromFilePath(path));
-    return [
-      for (final b in rec.blocks)
-        for (final l in b.lines)
-          OcrLine(l.text,
-              left: l.boundingBox.left,
-              top: l.boundingBox.top,
-              width: l.boundingBox.width,
-              height: l.boundingBox.height),
-    ];
+    try {
+      final rec =
+          await (front ? _jp : _latin).processImage(InputImage.fromFilePath(path));
+      return [
+        for (final b in rec.blocks)
+          for (final l in b.lines)
+            OcrLine(l.text,
+                left: l.boundingBox.left,
+                top: l.boundingBox.top,
+                width: l.boundingBox.width,
+                height: l.boundingBox.height),
+      ];
+    } catch (e) {
+      final log = await File('${(await _outDir()).path}/log/errors.txt')
+          .create(recursive: true);
+      await log.writeAsString('${DateTime.now().toIso8601String()} $path: $e\n',
+          mode: FileMode.append);
+      setState(() => _status = 'OCR 失敗: ${path.split('/').last} ($e)');
+      return const [];
+    }
   }
 
   void _refill() {
@@ -85,10 +107,13 @@ class _SpikePageState extends State<SpikePage> {
   }
 
   Future<void> _shoot(bool front, ImageSource source) async {
+    if (_busy) return;
     final x = await _picker.pickImage(source: source);
     if (x == null) return;
+    _busy = true;
     setState(() => _status = 'OCR中...');
     final lines = await _ocr(front, x.path);
+    _busy = false;
     setState(() {
       if (front) {
         _front = lines;
@@ -215,8 +240,19 @@ class _SpikePageState extends State<SpikePage> {
   }
 
   /// Batch: every image in `<out>/inbox` is treated as a front side; the
-  /// extractor's own guess is written as `expected` for later correction.
+  /// extractor's own guess is written as `expected` for later correction and
+  /// the cards are queued on screen for review / registration one by one.
   Future<void> _importInbox() async {
+    if (_busy) return;
+    _busy = true;
+    try {
+      await _importInboxLocked();
+    } finally {
+      _busy = false;
+    }
+  }
+
+  Future<void> _importInboxLocked() async {
     // The app must create inbox itself: a dir made by `adb shell mkdir` is not
     // readable by the app on Android 11+ (scoped storage ownership).
     final inbox =
@@ -227,15 +263,48 @@ class _SpikePageState extends State<SpikePage> {
             .where((f) => RegExp(r'\.(png|jpe?g)$', caseSensitive: false)
                 .hasMatch(f.path))
             .toList();
+    _queue.items.clear();
     for (final f in files) {
       setState(() => _status = 'OCR中: ${f.uri.pathSegments.last}');
-      _front = await _ocr(true, f.path);
+      final stem = f.uri.pathSegments.last.replaceAll(RegExp(r'\.\w+$'), '');
+      final lines = await _ocr(true, f.path);
+      if (lines.isEmpty) continue;
+      _front = lines;
       _back = null;
       _refill();
-      await _save(_fields!.toJson(),
-          f.uri.pathSegments.last.replaceAll(RegExp(r'\.\w+$'), ''));
+      await _save(_fields!.toJson(), stem);
+      _queue.items.add((stem: stem, front: lines));
     }
-    setState(() => _status = 'inbox: ${files.length} 件を golden/ に保存');
+    _showQueued();
+    setState(() => _status = 'inbox: ${_queue.items.length}/${files.length} 件を取込。'
+        '画面で確認して登録してください');
+  }
+
+  void _showQueued() {
+    final c = _queue.current;
+    if (c == null) return;
+    _front = c.front;
+    _back = null;
+    _source = '${c.stem}.json';
+    _refill();
+  }
+
+  void _move(bool forward) {
+    if (forward ? _queue.next() : _queue.prev()) setState(_showQueued);
+  }
+
+  /// `vault/_名刺.vcf`: every card note as vCard 3.0 for import elsewhere.
+  Future<void> _exportVcard() async {
+    final vault = await Directory('${(await _outDir()).path}/vault').create(recursive: true);
+    final notes = {
+      for (final f in vault.listSync().whereType<File>())
+        if (f.path.endsWith('.md'))
+          f.uri.pathSegments.last.replaceAll(RegExp(r'\.md$'), ''): await f.readAsString(),
+    };
+    final vcf = vcardOfNotes(notes);
+    final out = File('${vault.path}/_名刺.vcf');
+    await out.writeAsString(vcf);
+    setState(() => _status = 'vCard: ${'BEGIN:VCARD'.allMatches(vcf).length} 件を ${out.path} に出力');
   }
 
   @override
@@ -250,6 +319,11 @@ class _SpikePageState extends State<SpikePage> {
             tooltip: 'inbox を一括取込',
             icon: const Icon(Icons.folder_open),
             onPressed: _importInbox,
+          ),
+          IconButton(
+            tooltip: 'vault を vCard に出力',
+            icon: const Icon(Icons.contact_page_outlined),
+            onPressed: _exportVcard,
           ),
         ],
       ),
@@ -274,6 +348,23 @@ class _SpikePageState extends State<SpikePage> {
             ),
           ),
           Padding(padding: const EdgeInsets.symmetric(horizontal: 8), child: SelectableText(_status)),
+          if (_queue.current != null)
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                IconButton(
+                  tooltip: '前の名刺',
+                  icon: const Icon(Icons.chevron_left),
+                  onPressed: () => _move(false),
+                ),
+                Text('レビュー ${_queue.label}: ${_queue.current!.stem}'),
+                IconButton(
+                  tooltip: '次の名刺',
+                  icon: const Icon(Icons.chevron_right),
+                  onPressed: () => _move(true),
+                ),
+              ],
+            ),
           if (warn.isNotEmpty)
             Padding(
               padding: const EdgeInsets.all(8),

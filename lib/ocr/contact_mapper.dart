@@ -20,6 +20,9 @@ Contact toContact(CardFields f, {required DateTime scannedAt, String? source}) {
       : (f.nameRoman != null ? kanaName(f.nameRoman!) : null);
   final kparts = kana?.split(' ');
   return Contact(
+    // Platforms recompute this on create; the vCard writer uses it for FN,
+    // and without it FN comes out Western-ordered ("太郎 山田").
+    displayName: parts.join(' '),
     name: Name(
       last: parts.first,
       first: parts.length > 1 ? parts.sublist(1).join(' ') : null,

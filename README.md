@@ -68,6 +68,19 @@ adb pull /sdcard/Android/data/jp.tobishoku.meishi_ocr/files/golden ./pulled
 実機確認（P08 T）: 写真風名刺 → OCR → 登録で、姓名分割・ふりがな `ヤマダタロウ`・電話 3 件のラベル・メール・
 住所・組織・URL・メモが連絡先 DB に入ることを `adb shell content query` で確認済み。テスト用連絡先は削除済み。
 
+## 一括取込のレビューキューと vCard 出力
+
+- フォルダアイコン（inbox 一括取込）は OCR と golden/vault 保存のあと、取り込んだ名刺を画面のキューに載せる。
+  `‹ レビュー 2/5: p01_standard ›` で前後に移動し、各名刺を修正して **JSON保存** / **電話帳に登録** できる。
+- 取込中は再入禁止（`_busy`）。ML Kit の同時呼び出しは FastaLife でネイティブ側の SIGSEGV を起こした前例があり、
+  実機でも二重タップで 5 枚が 8 件に増える不整合が出たため。
+- 連絡先アイコンは vault の全ノートを vCard 3.0（`vault/_名刺.vcf`）にまとめる（`lib/ocr/vcard_export.dart`）。
+  Google コンタクトや iCloud、別端末への一括インポート用。ノートは取込日ごとに別ファイルなので、同じ人を
+  2 日に分けて撮ると vCard にも 2 件入る（重複排除は未実装）。
+- OCR が例外を出した画像はスキップして `log/errors.txt` に記録し、バッチは止めない。
+- `v*` タグを push すると GitHub Actions がテスト後に release APK をビルドして artifact に置く
+  （`.github/workflows/release.yml`、debug 鍵署名。ストア署名は手元のみ）。
+
 ## Obsidian ノート出力（`<外部領域>/vault/`）
 
 保存のたびに `_名刺一覧.md`（`lib/ocr/vault_index.dart`）も再生成する: 全名刺の表（氏名 / 会社 / 職種 / 地域 / 取込日）と
