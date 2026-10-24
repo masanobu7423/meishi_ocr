@@ -1,0 +1,14 @@
+{
+  "strict": true,
+  "note": "From a tilted device dump: OCR appended a stray '、' to the name. Trailing punctuation must not reach the name field.",
+  "front": [
+    {"text": "田中建設", "l": 40, "t": 40, "w": 200, "h": 28},
+    {"text": "田中 健二、", "l": 40, "t": 120, "w": 260, "h": 56},
+    {"text": "TEL: 019-623-1234", "l": 40, "t": 300, "w": 220, "h": 20}
+  ],
+  "expected": {
+    "name": "田中 健二",
+    "company": "田中建設",
+    "phone": "019-623-1234"
+  }
+}

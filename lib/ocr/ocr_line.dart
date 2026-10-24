@@ -6,12 +6,17 @@ class OcrLine {
   final String text;
   final double left, top, width, height;
 
+  /// Rotation of the line in degrees (ML Kit's `angle`, or derived from the
+  /// corner points). 0 for old dumps that did not record it.
+  final double angle;
+
   const OcrLine(
     this.text, {
     this.left = 0,
     this.top = 0,
     this.width = 0,
     this.height = 0,
+    this.angle = 0,
   });
 
   factory OcrLine.fromJson(Map<String, dynamic> j) => OcrLine(
@@ -20,8 +25,9 @@ class OcrLine {
         top: (j['t'] as num? ?? 0).toDouble(),
         width: (j['w'] as num? ?? 0).toDouble(),
         height: (j['h'] as num? ?? 0).toDouble(),
+        angle: (j['a'] as num? ?? 0).toDouble(),
       );
 
   Map<String, dynamic> toJson() =>
-      {'text': text, 'l': left, 't': top, 'w': width, 'h': height};
+      {'text': text, 'l': left, 't': top, 'w': width, 'h': height, 'a': angle};
 }

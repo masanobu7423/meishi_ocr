@@ -247,7 +247,8 @@ CardFields extract(List<OcrLine> front, [List<OcrLine> back = const []]) {
       !_kanaOnly.hasMatch(l.rest) &&
       !_digit.hasMatch(l.rest)));
   if (nameLine != null) {
-    f.name = nameLine.rest;
+    // Tilted shots sometimes end the name with a stray '、' or '.'.
+    f.name = nameLine.rest.replaceAll(RegExp(r'[、。,.・:;]+$'), '').trim();
     nameLine.used = true;
     final kana = tallest(remaining.where(
         (l) => !l.used && _kanaOnly.hasMatch(l.rest) && l.h < nameLine.h));
