@@ -64,3 +64,9 @@ Notes
 ## 画像（ユーザーがアップロード）
 
 `dist/store/` に生成。アイコン 512x512 PNG、フィーチャー グラフィック 1024x500 PNG、スマートフォン用スクリーンショット 1080x2340 PNG（合成データのみ）。
+
+## プライバシーポリシー URL
+
+https://masanobu7423.github.io/meishi_ocr/privacy.html
+
+連絡先メール: info@sunrisegroup.tokyo

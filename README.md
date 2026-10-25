@@ -86,6 +86,7 @@ adb pull /sdcard/Android/data/jp.tobishoku.meishi_ocr/files/golden ./pulled
 - **iOS TestFlight**: Windows からはビルドも提出もできない。`codemagic.yaml` の ios-testflight を Mac ランナーで動かす。
   事前に App Store Connect でアプリと bundle id を作り、API キーを Codemagic に登録する。
 - リリース名とノート（JA/EN）は `docs/releases/v<version>.md`。
+- プライバシーポリシーは `docs/privacy.md`（公開 URL: https://masanobu7423.github.io/meishi_ocr/privacy.html 、GitHub Pages が `docs/` を配信）。`python tool/privacy_html.py` で `docs/privacy.html` を再生成。
 - `git tag v0.2.0 && git push --tags` で GitHub Actions が APK（debug 鍵）を artifact に置く（配布用ではなく動作確認用）。
 
 ## 画面構成（`lib/app_shell.dart`）
