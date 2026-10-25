@@ -140,13 +140,19 @@ class _CardListState extends State<CardList> {
     final list = ListView.separated(
       shrinkWrap: widget.shrinkWrap,
       physics: widget.shrinkWrap ? const NeverScrollableScrollPhysics() : null,
+      padding: const EdgeInsets.symmetric(horizontal: AppSpace.gutter, vertical: AppSpace.unit),
       itemCount: cards.length,
-      separatorBuilder: (_, _) => const Divider(height: 1),
+      separatorBuilder: (_, _) => const SizedBox(height: AppSpace.unit + 2),
       itemBuilder: (context, i) {
         final c = cards[i];
         final img = c.imageFront == null ? null : File('${widget.vault.path}/${c.imageFront}');
-        return ListTile(
-          selected: _selected.contains(c.stem),
+        final selected = _selected.contains(c.stem);
+        // Rows as raised white cards on the white page (案 A, 立体).
+        return Card(
+          color: selected ? scheme.primaryContainer : scheme.surface,
+          clipBehavior: Clip.antiAlias,
+          child: ListTile(
+          selected: selected,
           leading: _selecting
               ? Checkbox(value: _selected.contains(c.stem), onChanged: (_) => _toggle(c))
               : SizedBox(
@@ -172,15 +178,28 @@ class _CardListState extends State<CardList> {
             children: [
               Text(c.scanned ?? '', style: text.labelSmall),
               if (widget.showStatus && c.status != CardStatus.registered)
-                Text(
-                  c.status == CardStatus.unreviewed ? '未確認' : '未登録',
-                  style: text.labelSmall?.copyWith(
-                      color: c.status == CardStatus.unreviewed ? scheme.error : scheme.tertiary),
+                Container(
+                  margin: const EdgeInsets.only(top: 2),
+                  padding: const EdgeInsets.symmetric(horizontal: AppSpace.unit, vertical: 1),
+                  decoration: BoxDecoration(
+                    color: c.status == CardStatus.unreviewed
+                        ? scheme.errorContainer
+                        : scheme.tertiaryContainer,
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: Text(
+                    c.status == CardStatus.unreviewed ? '未確認' : '未登録',
+                    style: text.labelSmall?.copyWith(
+                        color: c.status == CardStatus.unreviewed
+                            ? scheme.onErrorContainer
+                            : scheme.onTertiaryContainer),
+                  ),
                 ),
             ],
           ),
           onTap: () => _selecting ? _toggle(c) : widget.onTap(c),
           onLongPress: widget.onDelete == null ? null : () => _toggle(c),
+          ),
         );
       },
     );

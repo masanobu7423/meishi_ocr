@@ -17,19 +17,21 @@ Source of truth in code: `lib/theme.dart`. A value not in this table does not ap
 
 | token | value | defined in |
 |---|---|---|
-| primary | ColorScheme.fromSeed(seed 0xFF1F5F5B, teal-ish) → `colorScheme.primary` | lib/theme.dart |
-| surface / background | `colorScheme.surface` / `surfaceContainerLow` | lib/theme.dart |
+| primary | ColorScheme.fromSeed(seed 0xFF1D9E75, bright teal) → `colorScheme.primary` | lib/theme.dart |
+| surface / background | white (`colorScheme.surface`); grouping tints = pale teal `surfaceContainerLow…Highest` / `primaryContainer`（件数タイル、選択行、ナビの指示）| lib/theme.dart |
+| shapes | ボタン・チップ・セグメントはピル（999）、カード・行は `AppRadius.medium` 16、ダイアログ・件数タイルは `AppRadius.large` 20。罫線は `outlineVariant`（淡いティール） | lib/theme.dart |
+| depth | 立体: 主ボタン elevation 3、輪郭ボタン・行カード elevation 2、件数タイルは `appShadow`（ティール 18 % のぼかし 14 / 下 5）。影の色は常に primary 系、黒い影は使わない | lib/theme.dart |
 | on-surface (text) | `colorScheme.onSurface` | lib/theme.dart |
 | error / warning / success | `colorScheme.error` / `tertiary` / `primary` | lib/theme.dart |
 | display font | system default (Noto Sans JP on Android) | — |
 | body font | system default | — |
 | type scale | Material 3 textTheme: titleLarge / titleMedium / bodyLarge / labelMedium | lib/theme.dart |
-| radius (small / medium) | 8 / 12 (`AppRadius`) | lib/theme.dart |
+| radius (small / medium / large) | 10 / 16 / 20 (`AppRadius`) | lib/theme.dart |
 | spacing unit | 8 (`AppSpace.unit`); gutters 16 | lib/theme.dart |
 | sizes (icon-small / thumb / hero) | 18 / 96 / 64 (`AppSize`) | lib/theme.dart |
 | motion duration | none of our own; Material defaults only, on user action | — |
 
-TODO(owner): seed color は仮。ブランド色があれば差し替える。
+2026-10-25: 案 A「ホワイト＆ティール」を採用（白地 + 淡いティールの面 + ピル型）。ブランド色が決まれば seed だけ差し替える。
 
 ## 2b. Structure
 

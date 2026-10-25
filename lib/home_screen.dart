@@ -165,20 +165,24 @@ class _Stat extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(AppSpace.gutter),
       decoration: BoxDecoration(
-        color: scheme.surfaceContainerLow,
-        borderRadius: BorderRadius.circular(AppRadius.medium),
+        color: scheme.primaryContainer,
+        borderRadius: BorderRadius.circular(AppRadius.large),
+        boxShadow: appShadow(scheme),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(label, style: text.labelMedium?.copyWith(color: scheme.onSurfaceVariant)),
+          Text(label, style: text.labelMedium?.copyWith(color: scheme.primary)),
           const SizedBox(height: AppSpace.unit / 2),
           Row(
             crossAxisAlignment: CrossAxisAlignment.baseline,
             textBaseline: TextBaseline.alphabetic,
             children: [
-              Text(value, style: text.headlineSmall),
-              if (unit.isNotEmpty) Text(' $unit', style: text.bodyMedium),
+              Text(value,
+                  style: text.headlineMedium
+                      ?.copyWith(color: scheme.onPrimaryContainer, fontWeight: FontWeight.w600)),
+              if (unit.isNotEmpty)
+                Text(' $unit', style: text.bodyMedium?.copyWith(color: scheme.onPrimaryContainer)),
             ],
           ),
         ],
