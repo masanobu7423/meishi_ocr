@@ -60,14 +60,6 @@ void main() {
     ]);
   });
 
-  test('burstPauseText reports what is saved and which side comes next', () {
-    expect(burstPauseText(3, 2, paired: true, nextIsBack: true), '保存 3 枚（表 3 枚、裏 2 枚）。次は裏面です');
-    expect(burstPauseText(3, 3, paired: true, nextIsBack: false), '保存 3 枚（表 3 枚、裏 3 枚）。次は表面です');
-    expect(burstPauseText(0, 0, paired: true, nextIsBack: false), 'まだ保存していません。次は表面です');
-    expect(burstPauseText(4, 0, paired: false, nextIsBack: false), '保存 4 枚');
-    expect(burstPauseText(0, 0, paired: false, nextIsBack: false), 'まだ保存していません');
-  });
-
   test('shotStems names a burst of captures uniquely and file-safely', () {
     final stems = shotStems(DateTime(2026, 10, 25, 18, 12, 7, 42), 3);
     expect(stems,

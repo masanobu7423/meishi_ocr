@@ -12,6 +12,7 @@ import 'capture_screen.dart';
 import 'card_form.dart';
 import 'duplicate_screen.dart';
 import 'ocr/actions.dart';
+import 'ocr/burst.dart';
 import 'ocr/card_status.dart';
 import 'ocr/card_store.dart';
 import 'ocr/contact_mapper.dart';
@@ -140,43 +141,11 @@ class ScanPageState extends State<ScanPage> {
   /// until the user taps done (up to [_burstLimit]); every page is a front
   /// side, OCR'd, saved with the extractor's guess and queued for review,
   /// exactly like the folder import.
-  // One page per scanner session: on some phones (Galaxy S25) the camera
-  // preview goes black for the second page of a multi-page session, so the
-  // burst loop reopens the scanner for every page instead.
-  Future<List<String>> _captureMany() async {
-    final scanner = DocumentScanner(
-        options: DocumentScannerOptions(
-            pageLimit: 1, mode: ScannerMode.base, isGalleryImport: true));
-    try {
-      return (await scanner.scanDocument()).images ?? const [];
-    } catch (e) {
-      // Backing out of the scanner is reported as an exception too.
-      if (e.toString().toLowerCase().contains('cancel')) return const [];
-      final (store, _, _) = await _ready;
-      await store.appendError('document_scanner burst', e);
-      if (mounted) {
-        setState(() => _error = '続けて撮影を開始できませんでした。「表を撮影」で 1 枚ずつ撮ってください');
-      }
-      return const [];
-    } finally {
-      await scanner.close();
-    }
-  }
-
-  /// The scanner's result arrives before its delegate activity has finished;
-  /// launching the next session right away fails inside Google's delegate
-  /// ("Failed to handle result") and leaves a black screen. Wait until our
-  /// activity is back in front, then a little longer for the delegate to go.
-  Future<void> _waitForScannerToClose() async {
-    for (var i = 0; i < 30; i++) {
-      if (WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed) break;
-      await Future<void>.delayed(const Duration(milliseconds: 100));
-    }
-    await Future<void>.delayed(const Duration(milliseconds: 800));
-  }
-
+  /// 続けて撮影: the in-app camera stays open (ML Kit's scanner cannot show
+  /// which side is next, and on the Galaxy S25 its second page went black).
+  /// Every capture is copied into the inbox; 「まとめて取込」 reads it later.
   Future<void> shootMany() async {
-    final (_, ocr, _) = await _ready;
+    final (store, ocr, _) = await _ready;
     if (ocr.busy) return;
     final paired = await showDialog<bool>(
       context: context,
@@ -196,74 +165,27 @@ class ScanPageState extends State<ScanPage> {
             child: const ListTile(
               leading: Icon(Icons.flip),
               title: Text('表と裏を交互に'),
-              subtitle: Text('表、裏、表、裏…の順に 1 枚ずつ撮ります。裏がない名刺は表を 2 回'),
+              subtitle: Text('表、裏、表、裏…の順に撮ります。裏がない名刺は「白地で保管」'),
             ),
           ),
         ],
       ),
     );
-    if (paired == null) return;
-    // Shooting only: every page goes straight into the inbox folder (no OCR,
-    // so the scanner reopens at once) until the user closes the scanner.
-    // 「まとめて取込」 reads the folder later, pairing <stem>_front / _back.
-    final (store, _, _) = await _ready;
-    var cards = 0, backs = 0;
-    String? stem; // the card whose back comes next (paired mode)
-    var sessions = 0;
-    while (mounted) {
-      if (sessions++ > 0) await _waitForScannerToClose();
-      final paths = await _captureMany();
-      if (paths.isEmpty) {
-        // Closing the scanner pauses: the user decides to go on or to end.
-        if (!mounted) return;
-        // true = go on, false = end, null = this card has no back (blank).
-        final again = await showDialog<bool?>(
-          context: context,
-          barrierDismissible: false,
-          builder: (c) => AlertDialog(
-            title: const Text('連続撮影を一時停止'),
-            content: Text(burstPauseText(cards, backs, paired: paired, nextIsBack: stem != null)),
-            actions: [
-              TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('終了')),
-              if (stem != null)
-                TextButton(
-                  onPressed: () => Navigator.pop(c, null), // null = blank back, then go on
-                  child: const Text('裏なし（白紙を入れる）'),
-                ),
-              FilledButton.icon(
-                onPressed: () => Navigator.pop(c, true),
-                icon: const Icon(Icons.camera_alt),
-                label: const Text('続ける'),
-              ),
-            ],
-          ),
-        );
-        if (again == false) break;
-        if (again == null && stem != null) {
-          await store.stashBlankBack(stem);
-          backs++;
-          stem = null;
-        }
-        continue;
-      }
-      for (final p in paths) {
-        if (!paired) {
-          await store.stashCapture(File(p), shotStems(DateTime.now(), 1).first);
-          cards++;
-        } else if (stem == null) {
-          stem = shotStems(DateTime.now(), 1).first;
-          await store.stashCapture(File(p), '${stem}_front');
-          cards++;
-        } else {
-          await store.stashCapture(File(p), '${stem}_back');
-          backs++;
-          stem = null;
-        }
-      }
-    }
-    if (!mounted || cards == 0) return;
-    final sides = paired ? '（表 $cards 枚、裏 $backs 枚）' : '';
-    _toast('$cards 枚を取込フォルダに保存しました$sides。「まとめて取込」で読み取って、1 枚ずつ確認できます');
+    if (paired == null || !mounted) return;
+    final session = BurstSession(paired: paired);
+    await Navigator.push<BurstSession>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => CaptureScreen(
+          label: '',
+          burst: session,
+          onPage: (path, name) => store.stashCapture(File(path), name),
+          onBlank: store.stashBlankBack,
+        ),
+      ),
+    );
+    final summary = session.summary;
+    if (mounted && summary != null) _toast(summary);
   }
 
   /// Camera or album for the front (true) or back side.

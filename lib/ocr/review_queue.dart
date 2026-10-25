@@ -71,12 +71,3 @@ class ReviewQueue<T> {
     if (_i >= items.length && _i > 0) _i = items.length - 1;
   }
 }
-
-/// What the burst pause screen says: how many cards are saved and, when
-/// shooting front and back, which side the next capture is.
-String burstPauseText(int cards, int backs, {required bool paired, required bool nextIsBack}) {
-  final saved = cards == 0
-      ? 'まだ保存していません'
-      : '保存 $cards 枚${paired ? '（表 $cards 枚、裏 $backs 枚）' : ''}';
-  return paired ? '$saved。次は${nextIsBack ? '裏' : '表'}面です' : saved;
-}

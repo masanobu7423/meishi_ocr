@@ -1,16 +1,25 @@
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 
+import 'ocr/burst.dart';
 import 'ocr/capture_guide.dart';
+import 'theme.dart';
 
-/// In-app camera with a business-card framing guide. Pops with the captured
-/// file path, or null when cancelled.
+/// In-app camera with a business-card framing guide.
+///
+/// Single shot (no [burst]): pops with the captured file path, or null when
+/// cancelled. Burst ([burst] set): stays open, says which side is next,
+/// hands every capture to [onPage] (inbox name included), offers 白地で保管
+/// while a back is expected and 撮影を終了 between cards; pops when ended.
 // ponytail: no crop to the guide yet. CameraX stills can have a different
 // aspect than the preview, so a naive crop would cut text; ML Kit copes with
 // the desk background anyway (see golden 2xx).
 class CaptureScreen extends StatefulWidget {
   final String label;
-  const CaptureScreen({super.key, required this.label});
+  final BurstSession? burst;
+  final Future<void> Function(String path, String name)? onPage;
+  final Future<void> Function(String stem)? onBlank;
+  const CaptureScreen({super.key, required this.label, this.burst, this.onPage, this.onBlank});
 
   @override
   State<CaptureScreen> createState() => _CaptureScreenState();
@@ -20,6 +29,8 @@ class _CaptureScreenState extends State<CaptureScreen> {
   CameraController? _ctl;
   String? _error;
   bool _shooting = false;
+
+  BurstSession? get _burst => widget.burst;
 
   @override
   void initState() {
@@ -53,7 +64,14 @@ class _CaptureScreenState extends State<CaptureScreen> {
     setState(() => _shooting = true);
     try {
       final x = await _ctl!.takePicture();
-      if (mounted) Navigator.pop(context, x.path);
+      if (!mounted) return;
+      final b = _burst;
+      if (b == null) {
+        Navigator.pop(context, x.path);
+        return;
+      }
+      await widget.onPage!(x.path, b.nextName(DateTime.now()));
+      if (mounted) setState(() => _shooting = false);
     } catch (e) {
       setState(() {
         _shooting = false;
@@ -62,11 +80,31 @@ class _CaptureScreenState extends State<CaptureScreen> {
     }
   }
 
+  Future<void> _blank() async {
+    final stem = _burst?.blankStem();
+    if (stem == null) return;
+    await widget.onBlank!(stem);
+    if (mounted) setState(() {});
+  }
+
   @override
   Widget build(BuildContext context) {
+    final b = _burst;
+    final title = b == null ? '${widget.label}を撮影' : b.title;
     return Scaffold(
       backgroundColor: Colors.black,
-      appBar: AppBar(title: Text('${widget.label}を撮影'), backgroundColor: Colors.black54),
+      appBar: AppBar(
+        title: Text(title),
+        backgroundColor: Colors.black54,
+        actions: [
+          if (b != null && b.canFinish)
+            TextButton.icon(
+              onPressed: () => Navigator.pop(context, b),
+              icon: const Icon(Icons.stop_circle_outlined),
+              label: const Text('撮影を終了'),
+            ),
+        ],
+      ),
       body: _error != null
           ? Center(child: Text(_error!, style: const TextStyle(color: Colors.white)))
           : _ctl == null
@@ -76,11 +114,17 @@ class _CaptureScreenState extends State<CaptureScreen> {
                   children: [
                     CameraPreview(_ctl!),
                     CustomPaint(painter: _GuidePainter()),
-                    const Align(
-                      alignment: Alignment(0, -0.8),
+                    Align(
+                      alignment: const Alignment(0, -0.8),
                       child: Text(
-                        '名刺を枠に合わせる　影と反射を避ける　水平に',
-                        style: TextStyle(color: Colors.white, fontSize: 16, shadows: [Shadow(blurRadius: 4)]),
+                        b == null
+                            ? '名刺を枠に合わせる　影と反射を避ける　水平に'
+                            : b.side == CardSide.front
+                                ? '表面を枠に合わせる　${b.cards} 枚保存済み'
+                                : '裏面を枠に合わせる　印字がなければ「白地で保管」',
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                            color: Colors.white, fontSize: 16, shadows: [Shadow(blurRadius: 4)]),
                       ),
                     ),
                     Align(
@@ -90,6 +134,15 @@ class _CaptureScreenState extends State<CaptureScreen> {
                         child: Icon(_shooting ? Icons.hourglass_top : Icons.camera_alt),
                       ),
                     ),
+                    if (b != null && b.side == CardSide.back)
+                      Align(
+                        alignment: const Alignment(0.85, 0.85),
+                        child: FilledButton.tonalIcon(
+                          onPressed: _shooting ? null : _blank,
+                          icon: const Icon(Icons.crop_portrait, size: AppSize.iconSmall),
+                          label: const Text('白地で保管'),
+                        ),
+                      ),
                   ],
                 ),
     );
