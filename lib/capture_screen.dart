@@ -24,7 +24,11 @@ class CaptureScreen extends StatefulWidget {
   final BurstSession? burst;
   final Future<void> Function(String path, String name)? onPage;
   final Future<void> Function(String stem)? onBlank;
-  const CaptureScreen({super.key, required this.label, this.burst, this.onPage, this.onBlank});
+  /// Debug builds append the auto-shutter numbers here once a second, so
+  /// the thresholds can be tuned from a real desk without watching the screen.
+  final File? statsLog;
+  const CaptureScreen(
+      {super.key, required this.label, this.burst, this.onPage, this.onBlank, this.statsLog});
 
   @override
   State<CaptureScreen> createState() => _CaptureScreenState();
@@ -43,6 +47,8 @@ class _CaptureScreenState extends State<CaptureScreen> {
   double _progress = 0;
   FrameStats? _stats; // shown in debug builds to tune the thresholds
   Size? _previewBox; // the preview's on-screen size: the guide is drawn in it
+  List<QuadPoint>? _quad; // detected card corners in preview-box coordinates, smoothed
+  int _rotation = 90; // frame -> preview rotation, set once the camera is known
 
   BurstSession? get _burst => widget.burst;
 
@@ -62,7 +68,12 @@ class _CaptureScreenState extends State<CaptureScreen> {
           enableAudio: false, imageFormatGroup: ImageFormatGroup.yuv420);
       await ctl.initialize();
       if (!mounted) return;
-      if (_burst != null) await ctl.startImageStream(_onFrame);
+      // ponytail: portrait use is what the guide is drawn for; the sensor is
+      // landscape, rotated by its own orientation. Landscape phones get 0.
+      _rotation = MediaQuery.orientationOf(context) == Orientation.portrait
+          ? back.sensorOrientation % 360
+          : 0;
+      await ctl.startImageStream(_onFrame);
       setState(() => _ctl = ctl);
     } catch (e) {
       setState(() => _error = 'カメラを開けません: $e');
@@ -78,10 +89,30 @@ class _CaptureScreenState extends State<CaptureScreen> {
   }
 
   void _onFrame(CameraImage img) {
-    if (!_auto || _shooting || ++_frame % 3 != 0) return;
+    if (_shooting || ++_frame % 3 != 0) return;
     final p = img.planes[0];
     final stats = _sampler.sample(p.bytes, img.width, img.height, rowStride: p.bytesPerRow);
+    // The frame that follows the card: detected corners mapped into the
+    // preview box and smoothed so the overlay does not jitter.
+    final raw = stats.quad?.map((q) => frameToView(q, rotation: _rotation)).toList();
+    final prev = _quad;
+    final quad = raw == null
+        ? null
+        : prev == null
+            ? raw
+            : [for (var i = 0; i < 4; i++) (x: (prev[i].x + raw[i].x) / 2, y: (prev[i].y + raw[i].y) / 2)];
+    if (mounted && (quad != null || prev != null)) setState(() => _quad = quad);
+    if (!_auto || _burst == null) return;
     final fire = _shutter.feed(stats, DateTime.now());
+    if (kDebugMode && widget.statsLog != null && _frame % 30 == 0) {
+      widget.statsLog!.parent.createSync(recursive: true);
+      widget.statsLog!.writeAsString(
+          '${DateTime.now().toIso8601String()} c=${stats.center.toStringAsFixed(0)} '
+          'b=${stats.border.toStringAsFixed(0)} e=${stats.edges.toStringAsFixed(1)} '
+          'm=${stats.motion.toStringAsFixed(1)} p=${_shutter.progress.toStringAsFixed(2)} '
+          '${img.width}x${img.height} stride=${p.bytesPerRow}\n',
+          mode: FileMode.append);
+    }
     if (mounted && (kDebugMode || _shutter.progress != _progress)) {
       setState(() {
         _progress = _shutter.progress;
@@ -96,9 +127,14 @@ class _CaptureScreenState extends State<CaptureScreen> {
     setState(() => _shooting = true);
     try {
       final x = await _ctl!.takePicture();
-      // Auto frame: keep the guide area (what the user aligned), not the desk.
+      // Auto frame: straighten the detected card; else keep the guide area.
       final box = _previewBox;
-      final shot = box == null ? File(x.path) : await cropToGuide(File(x.path), box);
+      final quad = _quad;
+      final shot = box == null
+          ? File(x.path)
+          : quad != null
+              ? await rectifyToQuad(File(x.path), quad, box)
+              : await cropToGuide(File(x.path), box);
       if (!mounted) return;
       final b = _burst;
       if (b == null) {
@@ -158,7 +194,11 @@ class _CaptureScreenState extends State<CaptureScreen> {
                           _previewBox = c.biggest;
                           return Stack(
                             fit: StackFit.expand,
-                            children: [CameraPreview(_ctl!), CustomPaint(painter: _GuidePainter())],
+                            children: [
+                              CameraPreview(_ctl!),
+                              CustomPaint(painter: _GuidePainter()),
+                              if (_quad != null) CustomPaint(painter: _QuadPainter(_quad!)),
+                            ],
                           );
                         }),
                       ),
@@ -199,7 +239,11 @@ class _CaptureScreenState extends State<CaptureScreen> {
                             Padding(
                               padding: const EdgeInsets.only(top: AppSpace.unit),
                               child: Text(
-                                _progress > 0 ? '動かさないでください…' : '枠に合わせて止めると自動で撮ります',
+                                _progress > 0
+                                    ? '動かさないでください…'
+                                    : _quad != null
+                                        ? '名刺を検出しました　止めると自動で撮ります'
+                                        : '名刺を枠に入れると自動で撮ります',
                                 style: const TextStyle(
                                     color: Colors.amber, fontSize: 14, shadows: [Shadow(blurRadius: 4)]),
                               ),
@@ -240,6 +284,31 @@ class _CaptureScreenState extends State<CaptureScreen> {
                 ),
     );
   }
+}
+
+/// The frame that follows the detected card.
+class _QuadPainter extends CustomPainter {
+  final List<QuadPoint> quad;
+  _QuadPainter(this.quad);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final path = Path()..moveTo(quad[0].x * size.width, quad[0].y * size.height);
+    for (final q in quad.skip(1)) {
+      path.lineTo(q.x * size.width, q.y * size.height);
+    }
+    path.close();
+    canvas.drawPath(path, Paint()..color = Colors.lightGreenAccent.withValues(alpha: 0.18));
+    canvas.drawPath(
+        path,
+        Paint()
+          ..color = Colors.lightGreenAccent
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 3);
+  }
+
+  @override
+  bool shouldRepaint(_QuadPainter old) => old.quad != quad;
 }
 
 /// Dims everything outside the 91:55 guide and draws its outline + corners.

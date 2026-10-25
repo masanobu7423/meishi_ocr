@@ -181,6 +181,7 @@ class ScanPageState extends State<ScanPage> {
           burst: session,
           onPage: (path, name) => store.stashCapture(File(path), name),
           onBlank: store.stashBlankBack,
+          statsLog: File('${store.root.path}/log/shutter.txt'),
         ),
       ),
     );
@@ -236,16 +237,7 @@ class ScanPageState extends State<ScanPage> {
     setState(() {
       _queue.items.removeWhere(stems.contains);
       if (_queue.items.isEmpty) _queue.clear();
-      if (stems.contains(_source?.replaceAll('.json', ''))) {
-        _front = _back = null;
-        _frontPath = _backPath = null;
-        _source = null;
-        _status = null;
-        _fields = null;
-        for (final c in _ctl.values) {
-          c.clear();
-        }
-      }
+      if (stems.contains(_source?.replaceAll('.json', ''))) _clearCard();
     });
   }
 
@@ -338,20 +330,42 @@ class ScanPageState extends State<ScanPage> {
     final (store, _, _) = await _ready;
     final removed = await store.deleteCard(stem);
     if (!mounted) return;
-    setState(() {
-      _queue.clear();
-      _front = _back = null;
-      _frontPath = _backPath = null;
-      _source = null;
-      _status = null;
-      _fields = null;
-      _error = null;
-      for (final c in _ctl.values) {
-        c.clear();
-      }
-    });
+    setState(_clearCard);
     widget.onSaved();
     _toast(removed ? '削除しました' : 'この名刺はすでに削除されています');
+  }
+
+  /// Drop an unsaved read (a single scan that went wrong) and go back to
+  /// the empty state; nothing in the store is touched.
+  Future<void> _discard() async {
+    final go = await showDialog<bool>(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: const Text('この読み取りを破棄しますか？'),
+        content: const Text('保存していない内容と写真は消えます。もう一度撮影できます。'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('中止')),
+          FilledButton(onPressed: () => Navigator.pop(c, true), child: const Text('破棄する')),
+        ],
+      ),
+    );
+    if (go != true || !mounted) return;
+    setState(_clearCard);
+    _toast('破棄しました');
+  }
+
+  /// Back to the empty scan screen (the learned data stays).
+  void _clearCard() {
+    _queue.clear();
+    _front = _back = null;
+    _frontPath = _backPath = null;
+    _source = null;
+    _status = null;
+    _fields = null;
+    _error = null;
+    for (final c in _ctl.values) {
+      c.clear();
+    }
   }
 
   /// Register the reviewed card in the device address book. A phone/email
@@ -608,13 +622,17 @@ class ScanPageState extends State<ScanPage> {
                       icon: const Icon(Icons.add_a_photo_outlined),
                       onPressed: () => shoot(true, ImageSource.camera),
                     ),
-                    if (_source != null)
-                      IconButton(
-                        tooltip: 'この名刺を削除',
-                        icon: const Icon(Icons.delete_outline),
-                        color: scheme.error,
-                        onPressed: _progress == null ? _deleteCard : null,
-                      ),
+                    IconButton(
+                      // Stored card: delete it. Fresh read: discard it.
+                      tooltip: _source != null ? 'この名刺を削除' : 'この読み取りを破棄',
+                      icon: const Icon(Icons.delete_outline),
+                      color: scheme.error,
+                      onPressed: _progress != null
+                          ? null
+                          : _source != null
+                              ? _deleteCard
+                              : _discard,
+                    ),
                     const SizedBox(width: AppSpace.unit),
                     Expanded(
                       child: OutlinedButton(

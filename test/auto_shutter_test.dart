@@ -48,9 +48,53 @@ void main() {
     });
   });
 
+  group('quad detection', () {
+    /// A luminance plane with a bright convex quadrilateral (a tilted card).
+    Uint8List tilted(int w, int h, List<(double, double)> corners, {int bright = 220, int dark = 60}) {
+      final y = Uint8List(w * h);
+      bool inside(double px, double py) {
+        var sign = 0;
+        for (var i = 0; i < 4; i++) {
+          final (ax, ay) = corners[i];
+          final (bx, by) = corners[(i + 1) % 4];
+          final cross = (bx - ax) * (py - ay) - (by - ay) * (px - ax);
+          final s = cross >= 0 ? 1 : -1;
+          if (sign == 0) sign = s;
+          if (s != sign) return false;
+        }
+        return true;
+      }
+      for (var r = 0; r < h; r++) {
+        for (var c = 0; c < w; c++) {
+          y[r * w + c] = inside(c / w, r / h) ? bright : dark;
+        }
+      }
+      return y;
+    }
+
+    test('finds the four corners of a tilted bright card, in frame-normalised coordinates', () {
+      const corners = [(0.25, 0.20), (0.80, 0.28), (0.72, 0.82), (0.18, 0.70)]; // TL TR BR BL
+      final s = FrameSampler().sample(tilted(320, 180, corners), 320, 180, rowStride: 320);
+      final q = s.quad;
+      expect(q, isNotNull);
+      for (var i = 0; i < 4; i++) {
+        expect(q![i].x, closeTo(corners[i].$1, 0.05), reason: 'corner $i x');
+        expect(q[i].y, closeTo(corners[i].$2, 0.06), reason: 'corner $i y');
+      }
+    });
+
+    test('no quad on a flat desk, on a dark card, or when the bright area is tiny', () {
+      expect(FrameSampler().sample(plane(320, 180, border: 90, centre: 90), 320, 180).quad, isNull);
+      const tiny = [(0.48, 0.48), (0.52, 0.48), (0.52, 0.52), (0.48, 0.52)];
+      expect(FrameSampler().sample(tilted(320, 180, tiny), 320, 180).quad, isNull);
+    });
+  });
+
   group('AutoShutter', () {
-    FrameStats card({double motion = 0}) => (center: 200, border: 50, edges: 30, motion: motion);
-    FrameStats desk() => (center: 60, border: 55, edges: 1, motion: 0);
+    const q = [(x: 0.2, y: 0.2), (x: 0.8, y: 0.2), (x: 0.8, y: 0.8), (x: 0.2, y: 0.8)];
+    FrameStats card({double motion = 0}) =>
+        (center: 200, border: 50, edges: 30, motion: motion, quad: q);
+    FrameStats desk() => (center: 60, border: 55, edges: 1, motion: 0, quad: null);
     final t0 = DateTime(2026, 10, 26, 9);
 
     test('fires once after the card has been still for stableFrames, then waits for the card to change', () {
@@ -83,12 +127,11 @@ void main() {
       expect(a.feed(card(), t0), isTrue);
     });
 
-    test('a plain desk or a dark card never fires', () {
+    test('without a detected card it never fires', () {
       final a = AutoShutter(stableFrames: 2);
       for (var i = 0; i < 10; i++) {
         expect(a.feed(desk(), t0), isFalse);
-        expect(a.feed((center: 80, border: 20, edges: 30, motion: 0), t0), isFalse, reason: 'too dark');
-        expect(a.feed((center: 200, border: 190, edges: 2, motion: 0), t0), isFalse, reason: 'no text');
+        expect(a.feed((center: 200, border: 190, edges: 2, motion: 0, quad: null), t0), isFalse);
       }
     });
   });

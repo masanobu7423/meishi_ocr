@@ -1,14 +1,27 @@
 import 'dart:typed_data';
 
-/// Cheap per-frame numbers from the camera's luminance plane.
-typedef FrameStats = ({double center, double border, double edges, double motion});
+/// A point in frame-normalised coordinates (0..1 of width / height).
+typedef QuadPoint = ({double x, double y});
+
+/// Cheap per-frame numbers from the camera's luminance plane, plus the
+/// card's four corners (TL, TR, BR, BL) when a bright quadrilateral stands
+/// out against the surface.
+typedef FrameStats = ({
+  double center,
+  double border,
+  double edges,
+  double motion,
+  List<QuadPoint>? quad,
+});
 
 /// Samples a Y (luminance) plane on a coarse grid: mean brightness of the
 /// centre 60 % and of the border, mean horizontal gradient in the centre
-/// (printed text), and mean absolute change against the previous frame.
-/// ponytail: no edge detection or perspective; a bright, textured, still
-/// centre on a darker surface is "a card in the frame". Tune the thresholds
-/// in [AutoShutter] from real desks before anything smarter.
+/// (printed text), mean absolute change against the previous frame, and
+/// the corners of the bright region.
+/// ponytail: the "edge detection" is a threshold halfway between centre and
+/// border brightness plus the classic min/max of x±y for the corners. It
+/// follows a tilted card on a darker desk; on a white desk there is no
+/// contrast and no quad (the guide crop still applies).
 class FrameSampler {
   final int step;
   List<int>? _prev;
@@ -18,12 +31,15 @@ class FrameSampler {
     final stride = rowStride == 0 ? width : rowStride;
     final half = step ~/ 2;
     final samples = <int>[];
+    final xs = <int>[], ys = <int>[];
     var centerSum = 0, centerN = 0, borderSum = 0, borderN = 0, edgeSum = 0, edgeN = 0;
     for (var r = 0; r < height; r += step) {
       final inRow = r > height * 0.2 && r < height * 0.8;
       for (var c = 0; c < width; c += step) {
         final v = y[r * stride + c];
         samples.add(v);
+        xs.add(c);
+        ys.add(r);
         if (inRow && c > width * 0.2 && c < width * 0.8) {
           centerSum += v;
           centerN++;
@@ -47,35 +63,68 @@ class FrameSampler {
       motion = d / samples.length;
     }
     _prev = samples;
+    final center = centerN == 0 ? 0.0 : centerSum / centerN;
+    final border = borderN == 0 ? 0.0 : borderSum / borderN;
     return (
-      center: centerN == 0 ? 0 : centerSum / centerN,
-      border: borderN == 0 ? 0 : borderSum / borderN,
+      center: center,
+      border: border,
       edges: edgeN == 0 ? 0 : edgeSum / edgeN,
       motion: motion,
+      quad: _quad(samples, xs, ys, width, height, center, border),
     );
+  }
+
+  List<QuadPoint>? _quad(
+      List<int> v, List<int> xs, List<int> ys, int w, int h, double center, double border) {
+    if (center - border < 15) return null;
+    final t = (center + border) / 2;
+    var n = 0;
+    double? tlS, trS, brS, blS;
+    QuadPoint tl = (x: 0, y: 0), tr = tl, br = tl, bl = tl;
+    for (var i = 0; i < v.length; i++) {
+      if (v[i] <= t) continue;
+      n++;
+      final p = (x: xs[i] / w, y: ys[i] / h);
+      final sum = p.x + p.y, diff = p.x - p.y;
+      if (tlS == null || sum < tlS) {
+        tlS = sum;
+        tl = p;
+      }
+      if (brS == null || sum > brS) {
+        brS = sum;
+        br = p;
+      }
+      if (trS == null || diff > trS) {
+        trS = diff;
+        tr = p;
+      }
+      if (blS == null || diff < blS) {
+        blS = diff;
+        bl = p;
+      }
+    }
+    if (n < v.length * 0.06) return null;
+    final wide = (tr.x - tl.x).abs() >= 0.25 || (br.x - bl.x).abs() >= 0.25;
+    final tall = (bl.y - tl.y).abs() >= 0.25 || (br.y - tr.y).abs() >= 0.25;
+    if (!wide || !tall) return null;
+    return [tl, tr, br, bl];
   }
 }
 
-/// Decides when to take the picture: a card is in the frame (bright centre
-/// against the surface, with text edges), it has been still for
-/// [stableFrames] frames, and the previous card has been taken away since
+/// Decides when to take the picture: a card is detected, it has been still
+/// for [stableFrames] frames, and the previous card has left the frame since
 /// the last shot (plus [cooldown]).
 class AutoShutter {
-  final double minBrightness, minContrast, minEdges, maxMotion;
+  final double maxMotion;
   final int stableFrames;
   final Duration cooldown;
   int _stable = 0;
   bool _armed = true;
   DateTime? _lastShot;
 
-  // Thresholds: a hand-held phone over a textured desk jitters by a few
-  // levels per frame, and most centre samples land on blank paper, so the
-  // mean gradient of a real card is small. Read the live numbers on the
-  // capture screen (debug builds) before tightening these.
+  // A hand-held phone over a textured desk jitters by a few levels per
+  // frame; read the live numbers (debug builds) before tightening.
   AutoShutter({
-    this.minBrightness = 110,
-    this.minContrast = 15,
-    this.minEdges = 3,
     this.maxMotion = 12,
     this.stableFrames = 6,
     this.cooldown = const Duration(milliseconds: 1500),
@@ -86,9 +135,7 @@ class AutoShutter {
 
   /// True exactly on the frame a picture should be taken.
   bool feed(FrameStats s, DateTime now) {
-    final present =
-        s.center >= minBrightness && s.center - s.border >= minContrast && s.edges >= minEdges;
-    if (!present) {
+    if (s.quad == null) {
       _stable = 0;
       _armed = true; // the card left the frame: the next one may fire
       return false;
