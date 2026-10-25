@@ -788,7 +788,7 @@ class _EmptyState extends StatelessWidget {
               OutlinedButton.icon(
                 onPressed: onBurst,
                 icon: const Icon(Icons.burst_mode_outlined),
-                label: const Text('続けて撮影（あとでまとめて確認）'),
+                label: const Text('続けて撮影'),
               ),
             ],
           ],
