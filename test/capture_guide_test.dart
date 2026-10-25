@@ -3,6 +3,22 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:meishi_ocr/ocr/capture_guide.dart';
 
 void main() {
+  test('cropRect maps the guide onto the still with a margin, clamped to the image', () {
+    const preview = Size(400, 800); // portrait preview box
+    const still = Size(1200, 2400); // same aspect, 3x
+    final g = guideRect(preview);
+    final r = cropRect(preview, still, margin: 0);
+    expect(r.left, closeTo(g.left * 3, 0.01));
+    expect(r.width, closeTo(g.width * 3, 0.01));
+    final m = cropRect(preview, still, margin: 0.05);
+    expect(m.width, closeTo(g.width * 3 * 1.1, 0.01));
+    expect(m.left, greaterThanOrEqualTo(0));
+    expect(m.right, lessThanOrEqualTo(1200));
+    // A huge margin never leaves the image.
+    final big = cropRect(preview, still, margin: 5);
+    expect(big, const Rect.fromLTWH(0, 0, 1200, 2400));
+  });
+
   test('guide is a 91:55 card centred at 90 % of a portrait preview width', () {
     final r = guideRect(const Size(400, 800));
     expect(r.width, 360);

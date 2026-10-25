@@ -1,9 +1,13 @@
+import 'dart:io';
+
 import 'package:camera/camera.dart';
+import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 
 import 'ocr/auto_shutter.dart';
 import 'ocr/burst.dart';
 import 'ocr/capture_guide.dart';
+import 'ocr/crop.dart';
 import 'theme.dart';
 
 /// In-app camera with a business-card framing guide.
@@ -37,6 +41,8 @@ class _CaptureScreenState extends State<CaptureScreen> {
   final _shutter = AutoShutter();
   int _frame = 0;
   double _progress = 0;
+  FrameStats? _stats; // shown in debug builds to tune the thresholds
+  Size? _previewBox; // the preview's on-screen size: the guide is drawn in it
 
   BurstSession? get _burst => widget.burst;
 
@@ -76,7 +82,12 @@ class _CaptureScreenState extends State<CaptureScreen> {
     final p = img.planes[0];
     final stats = _sampler.sample(p.bytes, img.width, img.height, rowStride: p.bytesPerRow);
     final fire = _shutter.feed(stats, DateTime.now());
-    if (_shutter.progress != _progress && mounted) setState(() => _progress = _shutter.progress);
+    if (mounted && (kDebugMode || _shutter.progress != _progress)) {
+      setState(() {
+        _progress = _shutter.progress;
+        _stats = stats;
+      });
+    }
     if (fire) _shoot();
   }
 
@@ -85,13 +96,16 @@ class _CaptureScreenState extends State<CaptureScreen> {
     setState(() => _shooting = true);
     try {
       final x = await _ctl!.takePicture();
+      // Auto frame: keep the guide area (what the user aligned), not the desk.
+      final box = _previewBox;
+      final shot = box == null ? File(x.path) : await cropToGuide(File(x.path), box);
       if (!mounted) return;
       final b = _burst;
       if (b == null) {
-        Navigator.pop(context, x.path);
+        Navigator.pop(context, shot.path);
         return;
       }
-      await widget.onPage!(x.path, b.nextName(DateTime.now()));
+      await widget.onPage!(shot.path, b.nextName(DateTime.now()));
       if (mounted) setState(() => _shooting = false);
     } catch (e) {
       setState(() {
@@ -133,8 +147,22 @@ class _CaptureScreenState extends State<CaptureScreen> {
               : Stack(
                   fit: StackFit.expand,
                   children: [
-                    CameraPreview(_ctl!),
-                    CustomPaint(painter: _GuidePainter()),
+                    // Preview and guide share one box, so the guide maps
+                    // 1:1 onto the still for the crop.
+                    Center(
+                      child: AspectRatio(
+                        aspectRatio: MediaQuery.orientationOf(context) == Orientation.portrait
+                            ? 1 / _ctl!.value.aspectRatio
+                            : _ctl!.value.aspectRatio,
+                        child: LayoutBuilder(builder: (_, c) {
+                          _previewBox = c.biggest;
+                          return Stack(
+                            fit: StackFit.expand,
+                            children: [CameraPreview(_ctl!), CustomPaint(painter: _GuidePainter())],
+                          );
+                        }),
+                      ),
+                    ),
                     if (b != null)
                       Align(
                         alignment: const Alignment(0, -0.95),
@@ -186,6 +214,19 @@ class _CaptureScreenState extends State<CaptureScreen> {
                         child: Icon(_shooting ? Icons.hourglass_top : Icons.camera_alt),
                       ),
                     ),
+                    if (kDebugMode && b != null && _stats != null)
+                      Align(
+                        alignment: const Alignment(-0.95, 0.6),
+                        child: Semantics(
+                          label: 'auto-shutter stats',
+                          child: Text(
+                            'c=${_stats!.center.toStringAsFixed(0)} b=${_stats!.border.toStringAsFixed(0)} '
+                            'e=${_stats!.edges.toStringAsFixed(1)} m=${_stats!.motion.toStringAsFixed(1)} '
+                            'p=${_progress.toStringAsFixed(2)}',
+                            style: const TextStyle(color: Colors.white70, fontSize: 12),
+                          ),
+                        ),
+                      ),
                     if (b != null && b.side == CardSide.back)
                       Align(
                         alignment: const Alignment(0.85, 0.85),

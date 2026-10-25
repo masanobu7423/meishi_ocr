@@ -68,12 +68,16 @@ class AutoShutter {
   bool _armed = true;
   DateTime? _lastShot;
 
+  // Thresholds: a hand-held phone over a textured desk jitters by a few
+  // levels per frame, and most centre samples land on blank paper, so the
+  // mean gradient of a real card is small. Read the live numbers on the
+  // capture screen (debug builds) before tightening these.
   AutoShutter({
     this.minBrightness = 110,
-    this.minContrast = 20,
-    this.minEdges = 6,
-    this.maxMotion = 6,
-    this.stableFrames = 8,
+    this.minContrast = 15,
+    this.minEdges = 3,
+    this.maxMotion = 12,
+    this.stableFrames = 6,
     this.cooldown = const Duration(milliseconds: 1500),
   });
 
