@@ -226,6 +226,26 @@ class ScanPageState extends State<ScanPage> {
   /// saved values (not a fresh extraction) and images.
   Future<void> loadStoredCard(CardSummary picked) => _showStoredCard(picked.stem, name: picked.name);
 
+  /// Cards deleted elsewhere: drop them from the queue and clear the screen
+  /// if one of them is open, so a later 保存 cannot recreate it.
+  void forget(Set<String> stems) {
+    if (!mounted) return;
+    setState(() {
+      _queue.items.removeWhere(stems.contains);
+      if (_queue.items.isEmpty) _queue.clear();
+      if (stems.contains(_source?.replaceAll('.json', ''))) {
+        _front = _back = null;
+        _frontPath = _backPath = null;
+        _source = null;
+        _status = null;
+        _fields = null;
+        for (final c in _ctl.values) {
+          c.clear();
+        }
+      }
+    });
+  }
+
   Future<void> _showStoredCard(String stem, {String? name, bool keepQueue = false}) async {
     final (store, _, _) = await _ready;
     final card = await store.loadCard(stem);

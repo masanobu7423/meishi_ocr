@@ -37,6 +37,47 @@ void main() {
 
   Widget app(Widget child) => MaterialApp(theme: appTheme(), home: Scaffold(body: child));
 
+  testWidgets('long-press selects; the bar offers 修正 for one card and 削除 for all selected', (t) async {
+    final deleted = <List<String>>[];
+    CardSummary? opened;
+    await t.pumpWidget(app(CardList(
+      cards: _cards,
+      vault: Directory.systemTemp,
+      onTap: (c) => opened = c,
+      onDelete: (cs) async => deleted.add(cs.map((c) => c.stem).toList()),
+    )));
+    expect(find.byType(Checkbox), findsNothing);
+    await t.longPress(find.text('山田 太郎'));
+    await t.pump();
+    expect(find.text('1 件を選択中'), findsOneWidget);
+    expect(find.byType(Checkbox), findsNWidgets(3));
+    await t.tap(find.text('修正'));
+    await t.pump();
+    expect(opened?.stem, 'k01');
+    expect(find.byType(Checkbox), findsNothing, reason: 'editing leaves selection mode');
+
+    await t.longPress(find.text('山田 太郎'));
+    await t.pump();
+    await t.tap(find.text('鈴木 一郎'));
+    await t.pump();
+    expect(find.text('2 件を選択中'), findsOneWidget);
+    expect(find.text('修正'), findsNothing, reason: 'only one card can be edited at a time');
+    await t.tap(find.text('すべて選択'));
+    await t.pump();
+    expect(find.text('3 件を選択中'), findsOneWidget);
+    await t.tap(find.text('削除'));
+    await t.pump();
+    expect(deleted, [['k01', 'k02', 'k03']], reason: 'list order');
+    expect(find.byType(Checkbox), findsNothing);
+  });
+
+  testWidgets('without onDelete a long-press does nothing', (t) async {
+    await t.pumpWidget(app(CardList(cards: _cards, vault: Directory.systemTemp, onTap: (_) {})));
+    await t.longPress(find.text('山田 太郎'));
+    await t.pump();
+    expect(find.byType(Checkbox), findsNothing);
+  });
+
   testWidgets('CardList shows the status of cards that still need work', (t) async {
     await t.pumpWidget(app(CardList(cards: mixed, vault: Directory.systemTemp, onTap: (_) {})));
     expect(find.text('未確認'), findsOneWidget);

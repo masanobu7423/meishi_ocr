@@ -71,6 +71,33 @@ class _HomeShellState extends State<HomeShell> {
     await _scanKey.currentState?.loadStoredCard(c);
   }
 
+  /// Selected on the home / search / list screens: confirm once, delete
+  /// each (JSON, note, photos), leave the address book alone.
+  Future<void> _deleteCards(List<CardSummary> cards) async {
+    if (cards.isEmpty) return;
+    final label = cards.length == 1 ? '「${cards.single.name}」' : '${cards.length} 件';
+    final go = await showDialog<bool>(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: Text('$labelを削除しますか？'),
+        content: const Text('保存した読み取り結果と写真を削除します。電話帳に登録した連絡先は残ります。'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('中止')),
+          FilledButton(onPressed: () => Navigator.pop(c, true), child: const Text('削除する')),
+        ],
+      ),
+    );
+    if (go != true) return;
+    final (store, _) = await _ready;
+    var n = 0;
+    for (final c in cards) {
+      if (await store.deleteCard(c.stem)) n++;
+    }
+    _scanKey.currentState?.forget(cards.map((c) => c.stem).toSet());
+    _reload();
+    if (mounted) _toast('$n 件を削除しました');
+  }
+
   // ---- account / sync ------------------------------------------------------
 
   /// Resolves the target account once contacts permission is available;
@@ -319,6 +346,7 @@ class _HomeShellState extends State<HomeShell> {
                   _scanKey.currentState?.importInbox();
                 },
                 onOpenCard: _open,
+                onDelete: _deleteCards,
                 onSeeAll: () => _go(3),
                 onContinue: (f) {
                   setState(() => _listFilter = f);
@@ -332,11 +360,12 @@ class _HomeShellState extends State<HomeShell> {
                 account: _resolveAccount,
                 suggestions: _suggestions,
               ),
-              SearchScreen(cards: cards, vault: store.vaultDir, onTap: _open),
+              SearchScreen(cards: cards, vault: store.vaultDir, onTap: _open, onDelete: _deleteCards),
               ListScreen(
                 cards: cards,
                 vault: store.vaultDir,
                 onTap: _open,
+                onDelete: _deleteCards,
                 filter: _listFilter,
                 onFilter: (f) => setState(() => _listFilter = f),
               ),
