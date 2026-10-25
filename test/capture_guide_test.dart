@@ -36,17 +36,17 @@ void main() {
     expect(big, const Rect.fromLTWH(0, 0, 1200, 2400));
   });
 
-  test('guide is a 91:55 card centred at 90 % of a portrait preview width', () {
+  test('guide is a 91:55 card centred at 75 % of a portrait preview width (hand-held distance)', () {
     final r = guideRect(const Size(400, 800));
-    expect(r.width, 360);
-    expect(r.height, closeTo(360 * 55 / 91, 0.01));
+    expect(r.width, 300);
+    expect(r.height, closeTo(300 * 55 / 91, 0.01));
     expect(r.center, const Offset(200, 400));
   });
 
   test('guide is limited by height on a wide landscape preview', () {
     final r = guideRect(const Size(1600, 300));
-    expect(r.height, 270);
-    expect(r.width, closeTo(270 * 91 / 55, 0.01));
+    expect(r.height, 225);
+    expect(r.width, closeTo(225 * 91 / 55, 0.01));
     expect(r.center, const Offset(800, 150));
   });
 }

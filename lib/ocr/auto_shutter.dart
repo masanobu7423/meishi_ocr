@@ -11,6 +11,7 @@ typedef FrameStats = ({
   double border,
   double edges,
   double motion,
+  double shift,
   List<QuadPoint>? quad,
 });
 
@@ -18,13 +19,17 @@ typedef FrameStats = ({
 /// centre 60 % and of the border, mean horizontal gradient in the centre
 /// (printed text), mean absolute change against the previous frame, and
 /// the corners of the bright region.
-/// ponytail: the "edge detection" is a threshold halfway between centre and
-/// border brightness plus the classic min/max of x±y for the corners. It
+/// ponytail: the "edge detection" is Otsu's threshold over the sampled
+/// brightness (card vs surface, whatever the exposure, even when the card
+/// fills the guide) plus the classic min/max of x±y for the corners. It
 /// follows a tilted card on a darker desk; on a white desk there is no
-/// contrast and no quad (the guide crop still applies).
+/// contrast and no quad (the guide crop still applies). [shift] is how far
+/// the corners moved since the previous frame: on a hand-held phone the
+/// pixel difference is always large, the corners tell whether it is still.
 class FrameSampler {
   final int step;
   List<int>? _prev;
+  List<QuadPoint>? _prevQuad;
   FrameSampler({this.step = 8});
 
   FrameStats sample(Uint8List y, int width, int height, {int rowStride = 0}) {
@@ -63,21 +68,61 @@ class FrameSampler {
       motion = d / samples.length;
     }
     _prev = samples;
-    final center = centerN == 0 ? 0.0 : centerSum / centerN;
-    final border = borderN == 0 ? 0.0 : borderSum / borderN;
+    final quad = _quad(samples, xs, ys, width, height);
+    var shift = 0.0;
+    final pq = _prevQuad;
+    if (quad != null && pq != null) {
+      for (var i = 0; i < 4; i++) {
+        final d = [(quad[i].x - pq[i].x).abs(), (quad[i].y - pq[i].y).abs()];
+        shift = [shift, d[0], d[1]].reduce((a, b) => a > b ? a : b);
+      }
+    }
+    _prevQuad = quad;
     return (
-      center: center,
-      border: border,
+      center: centerN == 0 ? 0.0 : centerSum / centerN,
+      border: borderN == 0 ? 0.0 : borderSum / borderN,
       edges: edgeN == 0 ? 0 : edgeSum / edgeN,
       motion: motion,
-      quad: _quad(samples, xs, ys, width, height, center, border),
+      shift: shift,
+      quad: quad,
     );
   }
 
-  List<QuadPoint>? _quad(
-      List<int> v, List<int> xs, List<int> ys, int w, int h, double center, double border) {
-    if (center - border < 15) return null;
-    final t = (center + border) / 2;
+  /// Otsu's threshold over the sampled brightness, with the two class means.
+  static ({int t, double dark, double bright})? _otsu(List<int> v) {
+    final hist = List<int>.filled(256, 0);
+    for (final x in v) {
+      hist[x]++;
+    }
+    final total = v.length;
+    var sumAll = 0;
+    for (var i = 0; i < 256; i++) {
+      sumAll += i * hist[i];
+    }
+    var wB = 0, sumB = 0, best = -1.0, t = 0;
+    double meanD = 0, meanB = 0;
+    for (var i = 0; i < 256; i++) {
+      wB += hist[i];
+      if (wB == 0) continue;
+      final wF = total - wB;
+      if (wF == 0) break;
+      sumB += i * hist[i];
+      final mB = sumB / wB, mF = (sumAll - sumB) / wF;
+      final between = wB * wF * (mB - mF) * (mB - mF);
+      if (between > best) {
+        best = between;
+        t = i;
+        meanD = mB;
+        meanB = mF;
+      }
+    }
+    return best < 0 ? null : (t: t, dark: meanD, bright: meanB);
+  }
+
+  List<QuadPoint>? _quad(List<int> v, List<int> xs, List<int> ys, int w, int h) {
+    final o = _otsu(v);
+    if (o == null || o.bright - o.dark < 25) return null;
+    final t = o.t;
     var n = 0;
     double? tlS, trS, brS, blS;
     QuadPoint tl = (x: 0, y: 0), tr = tl, br = tl, bl = tl;
@@ -103,7 +148,9 @@ class FrameSampler {
         bl = p;
       }
     }
-    if (n < v.length * 0.06) return null;
+    // Too little bright area is noise; too much means the surface itself is
+    // the bright class (a white desk) and there is no card to outline.
+    if (n < v.length * 0.06 || n > v.length * 0.9) return null;
     final wide = (tr.x - tl.x).abs() >= 0.25 || (br.x - bl.x).abs() >= 0.25;
     final tall = (bl.y - tl.y).abs() >= 0.25 || (br.y - tr.y).abs() >= 0.25;
     if (!wide || !tall) return null;
@@ -115,17 +162,16 @@ class FrameSampler {
 /// for [stableFrames] frames, and the previous card has left the frame since
 /// the last shot (plus [cooldown]).
 class AutoShutter {
-  final double maxMotion;
+  /// Largest corner movement (fraction of the frame) that still counts as still.
+  final double maxShift;
   final int stableFrames;
   final Duration cooldown;
   int _stable = 0;
   bool _armed = true;
   DateTime? _lastShot;
 
-  // A hand-held phone over a textured desk jitters by a few levels per
-  // frame; read the live numbers (debug builds) before tightening.
   AutoShutter({
-    this.maxMotion = 12,
+    this.maxShift = 0.02,
     this.stableFrames = 6,
     this.cooldown = const Duration(milliseconds: 1500),
   });
@@ -140,7 +186,7 @@ class AutoShutter {
       _armed = true; // the card left the frame: the next one may fire
       return false;
     }
-    if (s.motion > maxMotion) {
+    if (s.shift > maxShift) {
       _stable = 0;
       return false;
     }

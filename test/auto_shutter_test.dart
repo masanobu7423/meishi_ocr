@@ -88,13 +88,32 @@ void main() {
       const tiny = [(0.48, 0.48), (0.52, 0.48), (0.52, 0.52), (0.48, 0.52)];
       expect(FrameSampler().sample(tilted(320, 180, tiny), 320, 180).quad, isNull);
     });
+
+    test('a card filling most of the frame (the guide is 90 % wide) is still found', () {
+      const big = [(0.04, 0.08), (0.96, 0.06), (0.95, 0.93), (0.05, 0.92)];
+      final q = FrameSampler().sample(tilted(320, 180, big, bright: 120, dark: 70), 320, 180).quad;
+      expect(q, isNotNull, reason: 'dim scene, little contrast, but two clear brightness groups');
+      expect(q![0].x, closeTo(0.04, 0.05));
+      expect(q[2].y, closeTo(0.93, 0.06));
+    });
+
+    test('shift is how far the corners moved since the previous frame', () {
+      final s = FrameSampler();
+      const a = [(0.25, 0.20), (0.80, 0.28), (0.72, 0.82), (0.18, 0.70)];
+      const b = [(0.30, 0.20), (0.85, 0.28), (0.77, 0.82), (0.23, 0.70)]; // 5 % to the right
+      expect(s.sample(tilted(320, 180, a), 320, 180).shift, 0);
+      expect(s.sample(tilted(320, 180, b), 320, 180).shift, closeTo(0.05, 0.03));
+      expect(s.sample(tilted(320, 180, b), 320, 180).shift, lessThan(0.01), reason: 'still');
+    });
   });
 
   group('AutoShutter', () {
     const q = [(x: 0.2, y: 0.2), (x: 0.8, y: 0.2), (x: 0.8, y: 0.8), (x: 0.2, y: 0.8)];
-    FrameStats card({double motion = 0}) =>
-        (center: 200, border: 50, edges: 30, motion: motion, quad: q);
-    FrameStats desk() => (center: 60, border: 55, edges: 1, motion: 0, quad: null);
+    // A hand-held phone over a textured desk: pixel motion is always high,
+    // only the corners tell whether the card is still.
+    FrameStats card({double shift = 0}) =>
+        (center: 200, border: 50, edges: 30, motion: 20, shift: shift, quad: q);
+    FrameStats desk() => (center: 60, border: 55, edges: 1, motion: 20, shift: 0, quad: null);
     final t0 = DateTime(2026, 10, 26, 9);
 
     test('fires once after the card has been still for stableFrames, then waits for the card to change', () {
@@ -119,7 +138,7 @@ void main() {
       expect(a.feed(card(), t0), isFalse);
       expect(a.feed(card(), t0), isFalse);
       expect(a.progress, 0.5);
-      expect(a.feed(card(motion: 30), t0), isFalse);
+      expect(a.feed(card(shift: 0.1), t0), isFalse);
       expect(a.progress, 0);
       expect(a.feed(card(), t0), isFalse);
       expect(a.feed(card(), t0), isFalse);
@@ -131,7 +150,7 @@ void main() {
       final a = AutoShutter(stableFrames: 2);
       for (var i = 0; i < 10; i++) {
         expect(a.feed(desk(), t0), isFalse);
-        expect(a.feed((center: 200, border: 190, edges: 2, motion: 0, quad: null), t0), isFalse);
+        expect(a.feed((center: 200, border: 190, edges: 2, motion: 0, shift: 0, quad: null), t0), isFalse);
       }
     });
   });

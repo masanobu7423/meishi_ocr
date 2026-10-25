@@ -109,7 +109,8 @@ class _CaptureScreenState extends State<CaptureScreen> {
       widget.statsLog!.writeAsString(
           '${DateTime.now().toIso8601String()} c=${stats.center.toStringAsFixed(0)} '
           'b=${stats.border.toStringAsFixed(0)} e=${stats.edges.toStringAsFixed(1)} '
-          'm=${stats.motion.toStringAsFixed(1)} p=${_shutter.progress.toStringAsFixed(2)} '
+          'm=${stats.motion.toStringAsFixed(1)} s=${stats.shift.toStringAsFixed(3)} '
+          'q=${stats.quad == null ? "-" : "y"} p=${_shutter.progress.toStringAsFixed(2)} '
           '${img.width}x${img.height} stride=${p.bytesPerRow}\n',
           mode: FileMode.append);
     }
@@ -266,7 +267,7 @@ class _CaptureScreenState extends State<CaptureScreen> {
                           child: Text(
                             'c=${_stats!.center.toStringAsFixed(0)} b=${_stats!.border.toStringAsFixed(0)} '
                             'e=${_stats!.edges.toStringAsFixed(1)} m=${_stats!.motion.toStringAsFixed(1)} '
-                            'p=${_progress.toStringAsFixed(2)}',
+                            's=${_stats!.shift.toStringAsFixed(3)} p=${_progress.toStringAsFixed(2)}',
                             style: const TextStyle(color: Colors.white70, fontSize: 12),
                           ),
                         ),

@@ -4,7 +4,7 @@ import 'dart:ui';
 const cardAspect = 91 / 55;
 
 /// Where to draw the framing guide on a camera preview of [preview] size:
-/// a 91:55 landscape rectangle, centred, filling 90 % of whichever
+/// a 91:55 landscape rectangle, centred, filling 75 % of whichever
 /// dimension limits it.
 /// The guide mapped onto the captured still (pixels), grown by [margin] of
 /// its own size on every side and clamped to the image. When the still has
@@ -43,10 +43,10 @@ Rect cropRect(Size preview, Size image, {double margin = 0.03}) {
 }
 
 Rect guideRect(Size preview) {
-  var w = preview.width * 0.9;
+  var w = preview.width * 0.75;
   var h = w / cardAspect;
-  if (h > preview.height * 0.9) {
-    h = preview.height * 0.9;
+  if (h > preview.height * 0.75) {
+    h = preview.height * 0.75;
     w = h * cardAspect;
   }
   return Rect.fromCenter(center: preview.center(Offset.zero), width: w, height: h);
