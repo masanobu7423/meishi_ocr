@@ -11,7 +11,7 @@ import 'capture_guide.dart';
 /// `<name>_crop.jpg`. The EXIF orientation is baked first so the guide and
 /// the pixels agree. Runs off the UI thread.
 Future<File> cropToGuide(File src, Size preview) async {
-  final out = src.path.replaceAll(RegExp(r'\.\w+$'), '') + '_crop.jpg';
+  final out = '${src.path.replaceAll(RegExp(r'\.\w+$'), '')}_crop.jpg';
   final bytes = await src.readAsBytes();
   await Isolate.run(() {
     var image = img.decodeImage(bytes);
