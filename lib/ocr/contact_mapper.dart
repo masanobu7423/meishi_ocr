@@ -43,13 +43,26 @@ Contact toContact(CardFields f, {required DateTime scannedAt, String? source}) {
         Address(street: f.address, postalCode: f.postal, label: const Label(AddressLabel.work)),
     ],
     organizations: [
-      if (f.company != null || f.title != null || f.dept != null)
-        Organization(name: f.company, jobTitle: f.title, departmentName: f.dept),
+      if (f.company != null || f.title != null || f.dept != null || f.division != null)
+        Organization(
+            name: f.company,
+            jobTitle: f.title,
+            departmentName: [f.division, f.dept].whereType<String>().join(' ').nullIfEmpty),
     ],
+    // Contacts have no fields for trade data, so it travels in the note,
+    // one labelled line each, in a fixed order the sync can rely on.
     notes: [
       Note(
-          note: '${f.memo == null ? '' : '${f.memo}\n'}'
-              '名刺取込 ${_ymd(scannedAt)}${source == null ? '' : ' ($source)'}'),
+          note: [
+        if (f.memo != null) f.memo!,
+        if (f.category != null) '区分: ${f.category}',
+        if (f.related != null) '関係者: ${f.related}',
+        if (f.corpNo != null) '法人番号: ${f.corpNo}',
+        if (f.constructionLicense != null) '建設業許可: ${f.constructionLicense}',
+        if (f.realEstateLicense != null) '宅建業免許: ${f.realEstateLicense}',
+        if (f.qualifications != null) '資格: ${f.qualifications}',
+        '名刺取込 ${_ymd(scannedAt)}${source == null ? '' : ' ($source)'}',
+      ].join('\n')),
     ],
   );
 }
@@ -73,4 +86,8 @@ Contact? findDuplicate(CardFields f, List<Contact> existing) {
     if (email != null && c.emails.any((e) => e.address.toLowerCase() == email)) return c;
   }
   return null;
+}
+
+extension on String {
+  String? get nullIfEmpty => isEmpty ? null : this;
 }

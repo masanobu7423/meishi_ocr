@@ -65,4 +65,29 @@ void main() {
     expect(s.where((c) => c.matches('sunrise.co')).length, 1, reason: 'email');
     expect(s.where((c) => c.matches('5432')).first.name, '山田 太郎');
   });
+
+  test('matches searches 区分 and 関係者; suggestionsFrom ranks values by use', () {
+    const c = '''---
+type: meishi
+name: 高橋 二郎
+company: 高橋工務店
+category: 協力会社
+division: 建築事業部
+related: 鈴木, 佐藤
+qualifications: 1級建築施工管理技士 / 1級建築士
+scanned: 2026-10-26
+source: k03.json
+tags: [名刺]
+---
+''';
+    final d = c.replaceAll('高橋 二郎', '中村 三郎').replaceAll('related: 鈴木, 佐藤', 'related: 佐藤');
+    final s = cardSummaries({'a': _a, 'c': c, 'd': d});
+    expect(s.where((x) => x.matches('協力会社')).length, 2);
+    expect(s.where((x) => x.matches('鈴木')).map((x) => x.name), ['高橋 二郎']);
+    final sug = suggestionsFrom({'a': _a, 'c': c, 'd': d});
+    expect(sug['related'], ['佐藤', '鈴木'], reason: 'most used first');
+    expect(sug['category'], ['協力会社']);
+    expect(sug['division'], ['建築事業部']);
+    expect(sug['qualifications'], ['1級建築施工管理技士', '1級建築士']);
+  });
 }

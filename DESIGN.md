@@ -40,6 +40,7 @@ TODO(owner): seed color は仮。ブランド色があれば差し替える。
 ## 3. Components and states
 
 - Button roles → widget: primary = `FilledButton`（電話帳に登録）, secondary = `OutlinedButton` / `FilledButton.tonal`（保存、撮影）, destructive = `IconButton` in `colorScheme.error`（この名刺を削除）。保存済みの名刺を開いているときだけ出る。
+- Choice fields: `DropdownMenu`（区分は固定 8 択 + 入力可、都道府県は 47 件）。複数値の項目（関係者・資格）はカンマ区切りの `TextField` に、過去に使った値を `InputChip` で並べてタップで追記。住所は全文の `TextField` を正とし、`ExpansionTile`「住所の内訳」で 6 区分に分けて直せる（双方向同期）。
 - Every async view renders: loading（OCR 中はスピナーと「読み取り中…」、保存/登録ボタンは無効）, empty（撮影・アルバム・続けて撮影への誘導）, error（何が起きたか + 次に何をするか、上部バナー）, success（SnackBar「電話帳に登録しました」）
 - Irreversible actions: 電話帳への登録は取り消せないので、重複候補があるときは左右比較の画面（統合 / 別人として登録 / 既存を電話帳アプリで編集 / 既存を削除して登録）。削除だけは確認ダイアログを挟む。名刺の削除（読み取り結果と写真）と、バックアップからの復元（同じ名刺を上書き）も確認ダイアログ。それ以外は確認なし。
 

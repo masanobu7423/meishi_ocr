@@ -44,9 +44,13 @@ class _HomeShellState extends State<HomeShell> {
   Account? _account;
   bool _accountResolved = false;
 
+  Map<String, List<String>> _suggestions = const {};
+
   Future<List<CardSummary>> _load() async {
     final (store, _) = await _ready;
-    return cardSummaries(await store.notes());
+    final notes = await store.notes();
+    _suggestions = suggestionsFrom(notes);
+    return cardSummaries(notes);
   }
 
   void _reload() => setState(() {
@@ -307,7 +311,13 @@ class _HomeShellState extends State<HomeShell> {
                 onOpenCard: _open,
                 onSeeAll: () => _go(3),
               ),
-              ScanPage(key: _scanKey, ready: _ready, onSaved: _reload, account: _resolveAccount),
+              ScanPage(
+                key: _scanKey,
+                ready: _ready,
+                onSaved: _reload,
+                account: _resolveAccount,
+                suggestions: _suggestions,
+              ),
               SearchScreen(cards: cards, vault: store.vaultDir, onTap: _open),
               ListScreen(cards: cards, vault: store.vaultDir, onTap: _open),
             ],

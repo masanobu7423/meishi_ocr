@@ -32,7 +32,26 @@ tags: [名刺]
 ---
 ''';
 
+const _d = '''---
+type: meishi
+name: 高橋 二郎
+company: 高橋工務店
+category: 協力会社
+related: 鈴木, 佐藤
+scanned: 2026-10-26
+tags: [名刺]
+---
+''';
+
 void main() {
+  test('buildIndex groups by 区分 and by each related user', () {
+    final md = buildIndex({'高橋_二郎_2026-10-26': _d, '鈴木_一郎_2026-10-25': _c});
+    expect(md, contains('## 区分別\n\n- [[区分_協力会社]] (1): [[高橋_二郎_2026-10-26|高橋 二郎]]\n- 未分類 (1): [[鈴木_一郎_2026-10-25|鈴木 一郎]]\n'));
+    expect(md, contains('## 関係者別\n\n'));
+    expect(md, contains('- [[鈴木]] (1): [[高橋_二郎_2026-10-26|高橋 二郎]]\n'));
+    expect(md, contains('- [[佐藤]] (1): [[高橋_二郎_2026-10-26|高橋 二郎]]\n'));
+  });
+
   test('parseFrontmatter reads the flat key: value block only', () {
     final fm = parseFrontmatter(_a);
     expect(fm['name'], '山田 太郎');

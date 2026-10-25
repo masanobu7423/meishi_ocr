@@ -68,6 +68,7 @@ class CardList extends StatelessWidget {
           ),
           title: Text(c.name),
           subtitle: Text([
+            if (c.category != null) '［${c.category}］',
             if (c.company != null) c.company!,
             if (c.title != null) c.title!,
             if (c.memo != null) c.memo!,

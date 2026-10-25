@@ -38,6 +38,35 @@ void main() {
     expect(md, contains('- メモ: 2026-10-24 展示会で名刺交換\n'));
   });
 
+  test('trade fields: frontmatter keys, tags for 区分/部門/資格/関係者, body lines', () {
+    final g = CardFields()
+      ..name = '山田 太郎'
+      ..company = '株式会社サンライズ建設'
+      ..address = '東京都渋谷区神宮前1-2-3 サンライズビル5F'
+      ..corpNo = '1234567890123'
+      ..constructionLicense = '東京都知事許可(般-5)第123456号'
+      ..realEstateLicense = '東京都知事(3)第45678号'
+      ..qualifications = '1級建築施工管理技士 / 1級建築士'
+      ..division = '建築事業部'
+      ..category = '協力会社'
+      ..related = '鈴木, 佐藤';
+    final md = cardNoteMarkdown(g, scannedAt: when);
+    expect(md, contains('pref: 東京都\ncity: 渋谷区\ntown: 神宮前\nblock: 1-2-3\nbuilding: サンライズビル\nroom: 5F\n'));
+    expect(md, contains('corp_no: 1234567890123\n'));
+    expect(md, contains('construction_license: 東京都知事許可(般-5)第123456号\n'));
+    expect(md, contains('real_estate_license: 東京都知事(3)第45678号\n'));
+    expect(md, contains('qualifications: 1級建築施工管理技士 / 1級建築士\n'));
+    expect(md, contains('division: 建築事業部\ncategory: 協力会社\nrelated: 鈴木, 佐藤\n'));
+    expect(md, contains('#区分_協力会社 #部門_建築事業部 #資格_1級建築施工管理技士 #資格_1級建築士 #関係者_鈴木 #関係者_佐藤'));
+    expect(md, contains('- 区分: [[区分_協力会社]]\n'));
+    expect(md, contains('- 部門: 建築事業部\n'));
+    expect(md, contains('- 関係者: [[鈴木]], [[佐藤]]\n'));
+    expect(md, contains('- 建設業許可: 東京都知事許可(般-5)第123456号\n'));
+    expect(md, contains('- 宅建業免許: 東京都知事(3)第45678号\n'));
+    expect(md, contains('- 法人番号: 1234567890123\n'));
+    expect(md, contains('- 資格: 1級建築施工管理技士 / 1級建築士\n'));
+  });
+
   test('filename is sanitized and dated', () {
     expect(cardNoteFilename(f, when), '山田_太郎_2026-10-24.md');
     expect(cardNoteFilename(CardFields(), when), '名無し_2026-10-24.md');

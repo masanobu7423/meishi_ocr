@@ -9,6 +9,7 @@ class CardSummary {
   final String name;
   final String? company, title, memo, imageFront, imageBack, scanned;
   final String? kana, phone, mobile, email;
+  final String? category, related, division, qualifications;
 
   const CardSummary({
     required this.noteStem,
@@ -24,10 +25,16 @@ class CardSummary {
     this.phone,
     this.mobile,
     this.email,
+    this.category,
+    this.related,
+    this.division,
+    this.qualifications,
   });
 
-  String get _haystack => _fold(
-      [name, kana, company, title, memo, phone, mobile, email].whereType<String>().join(' '));
+  String get _haystack => _fold([
+        name, kana, company, title, memo, phone, mobile, email,
+        category, related, division, qualifications,
+      ].whereType<String>().join(' '));
 
   /// Case-, width- and kana-insensitive substring match; empty query = all.
   bool matches(String query) => query.trim().isEmpty || _haystack.contains(_fold(query));
@@ -53,6 +60,10 @@ List<CardSummary> cardSummaries(Map<String, String> notes) {
       phone: fm['phone'],
       mobile: fm['mobile'],
       email: fm['email'],
+      category: fm['category'],
+      related: fm['related'],
+      division: fm['division'],
+      qualifications: fm['qualifications'],
     ));
   }
   out.sort((a, b) => (b.scanned ?? '').compareTo(a.scanned ?? ''));
@@ -78,4 +89,37 @@ String _fold(String s) {
   t = t.replaceAllMapped(
       RegExp(r'[ぁ-ゖ]'), (m) => String.fromCharCode(m[0]!.codeUnitAt(0) + 0x60));
   return t;
+}
+
+/// Values already used for the user-maintained fields, most used first
+/// (ties keep first-seen order), for the form's suggestion chips.
+Map<String, List<String>> suggestionsFrom(Map<String, String> notes) {
+  const single = ['category', 'division'];
+  const multi = ['related', 'qualifications'];
+  final counts = {for (final k in [...single, ...multi]) k: <String, int>{}};
+  for (final md in notes.values) {
+    final fm = parseFrontmatter(md);
+    if (fm['type'] != 'meishi') continue;
+    for (final k in single) {
+      final v = fm[k]?.trim();
+      if (v != null && v.isNotEmpty) counts[k]!.update(v, (n) => n + 1, ifAbsent: () => 1);
+    }
+    for (final k in multi) {
+      for (final v in splitNames(fm[k])) {
+        counts[k]!.update(v, (n) => n + 1, ifAbsent: () => 1);
+      }
+    }
+  }
+  return {
+    for (final e in counts.entries)
+      e.key: () {
+        final order = e.value.keys.toList();
+        final sorted = List.of(order)
+          ..sort((a, b) {
+            final d = e.value[b]! - e.value[a]!;
+            return d != 0 ? d : order.indexOf(a) - order.indexOf(b);
+          });
+        return sorted;
+      }(),
+  };
 }

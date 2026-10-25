@@ -30,11 +30,15 @@ void main() {
       'name': '山田 太郎', 'kana': 'やまだ たろう', 'roman': 'Taro Yamada',
       'company': 'X', 'dept': 'D', 'title': 'T', 'phone': '1', 'mobile': '2',
       'fax': '3', 'email': 'e', 'url': 'u', 'postal': 'p', 'address': 'a',
+      'corp_no': 'c', 'construction_license': 'cl', 'real_estate_license': 'rl',
+      'qualifications': 'q', 'division': 'dv', 'category': 'ct', 'related': 'r',
     }).toJson();
     expect(f, {
       'name': '山田 太郎', 'nameKana': 'やまだ たろう', 'nameRoman': 'Taro Yamada',
       'company': 'X', 'dept': 'D', 'title': 'T', 'phone': '1', 'mobile': '2',
       'fax': '3', 'email': 'e', 'url': 'u', 'postal': 'p', 'address': 'a', 'memo': null,
+      'corpNo': 'c', 'constructionLicense': 'cl', 'realEstateLicense': 'rl',
+      'qualifications': 'q', 'division': 'dv', 'category': 'ct', 'related': 'r',
     });
   });
 

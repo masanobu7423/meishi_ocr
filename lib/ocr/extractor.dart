@@ -10,9 +10,17 @@ class CardFields {
   /// Free text the user adds (where / when they met); never extracted.
   String? memo;
 
+  /// Construction / real-estate trade fields: licence numbers, the 13-digit
+  /// corporate number and qualifications are printed and extracted; the
+  /// division (部門), label (区分) and related users are the user's own.
+  String? corpNo, constructionLicense, realEstateLicense, qualifications;
+  String? division, category, related;
+
   static const keys = [
     'name', 'nameKana', 'nameRoman', 'company', 'dept', 'title',
     'phone', 'mobile', 'fax', 'email', 'url', 'postal', 'address', 'memo',
+    'corpNo', 'constructionLicense', 'realEstateLicense', 'qualifications',
+    'division', 'category', 'related',
   ];
 
   void set(String key, String? v) {
@@ -31,6 +39,13 @@ class CardFields {
       case 'postal': postal = v;
       case 'address': address = v;
       case 'memo': memo = v;
+      case 'corpNo': corpNo = v;
+      case 'constructionLicense': constructionLicense = v;
+      case 'realEstateLicense': realEstateLicense = v;
+      case 'qualifications': qualifications = v;
+      case 'division': division = v;
+      case 'category': category = v;
+      case 'related': related = v;
     }
   }
 
@@ -49,6 +64,13 @@ class CardFields {
         'postal': postal,
         'address': address,
         'memo': memo,
+        'corpNo': corpNo,
+        'constructionLicense': constructionLicense,
+        'realEstateLicense': realEstateLicense,
+        'qualifications': qualifications,
+        'division': division,
+        'category': category,
+        'related': related,
       };
 }
 
@@ -85,7 +107,23 @@ final _company = RegExp(
     r'株式会社|有限会社|合同会社|\(株\)|㈱|\bInc\b|Co\.,? ?Ltd|\bCorp(?:oration)?\b|\bLLC\b|K\.K\.|Company',
     caseSensitive: false);
 final _title = RegExp(
-    r'代表取締役|取締役|執行役員|社長|会長|専務|常務|部長|次長|課長|係長|主任|室長|所長|支店長|工場長|マネージャー|リーダー|エンジニア|デザイナー|コンサルタント|ディレクター|プロデューサー|担当|CEO|CTO|CFO|COO|President|Director|Manager|Engineer');
+    r'代表取締役|取締役|執行役員|社長|会長|専務|常務|部長|次長|課長|係長|主任|室長|所長|支店長|工場長|現場監督|現場代理人|監理技術者|主任技術者|職長|マネージャー|リーダー|エンジニア|デザイナー|コンサルタント|ディレクター|プロデューサー|担当|CEO|CTO|CFO|COO|President|Director|Manager|Engineer');
+// 建設業許可 / 宅建業免許: issuer, (特|般)-renewal count, number. The 宅建
+// form has only the count in parentheses, so it never matches a 許可 line.
+const _issuer = r'(国土交通大臣|[一-龥]{2,3}[都道府県]?知事)';
+// 許可 may sit only in the label ("建設業許可 東京都知事（般-5）…"), so it is
+// optional here; (特|般) keeps the 宅建 form from matching.
+final _constr = RegExp(
+    '$_issuer\\s*(?:許可)?\\s*\\(?\\s*(特|般)\\s*[-−‐ー]?\\s*(\\d{1,2})\\s*\\)?\\s*第?\\s*(\\d+)\\s*号?');
+final _takken = RegExp('$_issuer\\s*(?:免許)?\\s*\\(\\s*(\\d{1,2})\\s*\\)\\s*第?\\s*(\\d+)\\s*号?');
+// 法人番号 is 13 digits; the invoice registration number is T + the same 13.
+final _corpNo = RegExp(r'(?<![\dA-Za-z])T?(\d{13})(?!\d)');
+final _qual = RegExp(
+    r'[12一二]級\s*(?:建築|土木|電気工事|管工事|造園|建設機械|電気通信工事)\s*施工管理技士補?'
+    // "一級建築士事務所" is a company type, not a person's qualification.
+    r'|[12一二]級建築士(?!事務所)|木造建築士(?!事務所)|宅地建物取引士|技術士補?|測量士補?|建築設備士|[12一二]級[^\s・/,、]{1,8}技能士');
+final _licenseWords =
+    RegExp(r'建設業許可|許可番号|宅地建物取引業者?(?:免許)?|宅建業免許|免許番号|法人番号|登録番号|適格請求書発行事業者');
 final _deptSuffix = r'本部|事業部|支店|営業所|部|課|室|係|グループ|チーム|センター|研究所';
 final _dept = RegExp('($_deptSuffix)\$');
 final _deptAny = RegExp('($_deptSuffix)');
@@ -158,6 +196,33 @@ CardFields extractWith(List<OcrLine> front, List<OcrLine> back, Learned? learned
     if (l.rest.contains('@') || _url.hasMatch(l.rest)) {
       l.rest = l.rest.replaceAll(_label, '').replaceAll(RegExp(r'\s+'), '');
     }
+    // Trade licences, corporate number and qualifications come before the
+    // phone rule: their digits must never be read as numbers to call.
+    final cm = _constr.firstMatch(l.rest);
+    if (cm != null) {
+      f.constructionLicense ??= '${cm[1]}許可(${cm[2]}-${cm[3]})第${cm[4]}号';
+      l.rest = l.rest.replaceFirst(_constr, '');
+    }
+    final tm = _takken.firstMatch(l.rest);
+    if (tm != null) {
+      f.realEstateLicense ??= '${tm[1]}(${tm[2]})第${tm[3]}号';
+      l.rest = l.rest.replaceFirst(_takken, '');
+    }
+    // Not on a URL line: a 13-digit path segment is part of the URL.
+    final nm = _url.hasMatch(l.rest) ? null : _corpNo.firstMatch(l.rest);
+    if (nm != null) {
+      f.corpNo ??= nm[1];
+      l.rest = l.rest.replaceFirst(_corpNo, '');
+    }
+    for (final m in _qual.allMatches(l.rest)) {
+      final q = m[0]!
+          .replaceAll(RegExp(r'\s'), '')
+          .replaceFirst(RegExp('^一'), '1')
+          .replaceFirst(RegExp('^二'), '2');
+      final have = f.qualifications?.split(' / ') ?? const [];
+      if (!have.contains(q)) f.qualifications = [...have, q].join(' / ');
+    }
+    l.rest = l.rest.replaceAll(_qual, '').replaceAll(_licenseWords, '');
     // "FAX: 019-62 3-1235": on labelled phone lines a space between digits is noise.
     if (RegExp(r'TEL|FAX|PHONE|MOBILE|電話|携帯', caseSensitive: false).hasMatch(l.rest)) {
       l.rest = l.rest.replaceAllMapped(RegExp(r'(\d)\s+(?=[\d-])'), (m) => m[1]!);
@@ -196,7 +261,7 @@ CardFields extractWith(List<OcrLine> front, List<OcrLine> back, Learned? learned
     // "Mobi le" -> "Mobile" before label removal, or the fragment survives as
     // a Latin line and gets picked as the roman name.
     l.rest = fixRomanSpacing(l.rest.replaceAll(_phone, '')).replaceAll(_label, '');
-    l.rest = normalize(l.rest).replaceAll(RegExp(r'^[:\s/|]+|[:\s/|]+$'), '');
+    l.rest = normalize(l.rest).replaceAll(RegExp(r'^[:\s/|・、,]+|[:\s/|・、,]+$'), '');
     if (l.rest.isEmpty) l.used = true;
   }
 

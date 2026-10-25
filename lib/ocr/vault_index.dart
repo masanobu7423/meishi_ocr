@@ -35,10 +35,14 @@ String buildIndex(Map<String, String> notes) {
         '${opt(c.fm['pref'])} | ${opt(c.fm['scanned'])} |\n');
   }
 
-  void section(String title, String key, String Function(String) label) {
+  void section(String title, Iterable<String?> Function(Map<String, String> fm) values,
+      String Function(String) label) {
     final groups = <String?, List<String>>{};
     for (final c in cards) {
-      groups.putIfAbsent(c.fm[key], () => []).add(link(c));
+      final vs = values(c.fm).toList();
+      for (final v in vs.isEmpty ? const <String?>[null] : vs) {
+        groups.putIfAbsent(v, () => []).add(link(c));
+      }
     }
     final keys = groups.keys.toList()
       ..sort((x, y) {
@@ -52,9 +56,17 @@ String buildIndex(Map<String, String> notes) {
     }
   }
 
-  section('会社別', 'company', (k) => '[[$k]]');
-  section('職種別', 'job', (k) => '[[職種_$k]]');
-  section('地域別', 'pref', (k) => '[[$k]]');
+  section('会社別', (fm) => [fm['company']], (k) => '[[$k]]');
+  section('職種別', (fm) => [fm['job']], (k) => '[[職種_$k]]');
+  section('地域別', (fm) => [fm['pref']], (k) => '[[$k]]');
+  section('区分別', (fm) => [fm['category']], (k) => '[[区分_$k]]');
+  section('関係者別', (fm) => splitNames(fm['related']), (k) => '[[$k]]');
   b.write('\n#名刺 #名刺_索引\n');
   return b.toString();
 }
+
+/// "a, b / c" -> [a, b, c]: the list fields (related users, qualifications)
+/// are typed free-form with commas or slashes.
+List<String> splitNames(String? s) => s == null
+    ? const []
+    : s.split(RegExp(r'[,/;、，／]')).map((x) => x.trim()).where((x) => x.isNotEmpty).toList();

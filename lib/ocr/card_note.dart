@@ -1,4 +1,6 @@
+import 'address.dart';
 import 'extractor.dart';
+import 'vault_index.dart' show splitNames;
 
 /// Obsidian-style note for one card, in the same dialect FastaLife's vault
 /// parser (ObsidianEngine) reads: flat `key: value` frontmatter, `tags: [..]`
@@ -8,8 +10,6 @@ import 'extractor.dart';
 final _tagBad = RegExp(r'[^\w぀-ゟ゠-ヿ一-鿿-]');
 final _corp = RegExp(r'株式会社|有限会社|合同会社|\(株\)|㈱|Co\.,? ?Ltd\.?|Inc\.?|Corp(?:oration)?\.?|LLC|K\.K\.',
     caseSensitive: false);
-final _pref = RegExp(r'^(東京都|北海道|京都府|大阪府|.{2,3}県)');
-final _city = RegExp(r'^(.+?[市区町村郡])');
 
 /// `#tag`-safe: anything outside letters/kana/kanji/digits/-/_ becomes `_`.
 String tagify(String s) =>
@@ -46,10 +46,11 @@ String cardNoteMarkdown(CardFields f,
     bool vertical = false,
     String? source,
     Map<String, String> images = const {}}) {
-  final pref = f.address == null ? null : _pref.firstMatch(f.address!)?[1];
-  final city = pref == null
-      ? null
-      : _city.firstMatch(f.address!.substring(pref.length))?[1];
+  final addr = splitAddress(f.address);
+  final pref = addr.pref;
+  final city = addr.city;
+  final quals = splitNames(f.qualifications);
+  final related = splitNames(f.related);
   final job = jobCategory(f.dept, f.title);
   final companyShort = f.company?.replaceAll(_corp, '').trim();
   final areaCode = (f.phone ?? f.fax)?.split('-').first;
@@ -61,6 +62,10 @@ String cardNoteMarkdown(CardFields f,
     if (job != null) '職種_$job',
     if (f.title != null) '役職_${tagify(f.title!)}',
     if (f.dept != null) '部署_${tagify(f.dept!)}',
+    if (f.category != null) '区分_${tagify(f.category!)}',
+    if (f.division != null) '部門_${tagify(f.division!)}',
+    for (final q in quals) '資格_${tagify(q)}',
+    for (final r in related) '関係者_${tagify(r)}',
     if (pref != null) '地域_$pref',
     if (city != null) '市区_${tagify(city)}',
     if (areaCode != null) '市外局番_$areaCode',
@@ -88,8 +93,19 @@ String cardNoteMarkdown(CardFields f,
     ..write(fm('postal', f.postal))
     ..write(fm('pref', pref))
     ..write(fm('city', city))
+    ..write(fm('town', addr.town))
+    ..write(fm('block', addr.block))
+    ..write(fm('building', addr.building))
+    ..write(fm('room', addr.room))
     ..write(fm('address', f.address))
     ..write(fm('memo', f.memo))
+    ..write(fm('corp_no', f.corpNo))
+    ..write(fm('construction_license', f.constructionLicense))
+    ..write(fm('real_estate_license', f.realEstateLicense))
+    ..write(fm('qualifications', f.qualifications))
+    ..write(fm('division', f.division))
+    ..write(fm('category', f.category))
+    ..write(fm('related', f.related))
     ..write('scanned: ${_ymd(scannedAt)}\n')
     ..write('vertical: $vertical\n')
     ..write(fm('source', source))
@@ -106,6 +122,9 @@ String cardNoteMarkdown(CardFields f,
     b.write('- 部署/役職: ${[f.dept, f.title].whereType<String>().join(' ')}\n');
   }
   if (job != null) b.write('- 職種: [[職種_$job]]\n');
+  if (f.division != null) b.write('- 部門: ${f.division}\n');
+  if (f.category != null) b.write('- 区分: [[区分_${tagify(f.category!)}]]\n');
+  if (related.isNotEmpty) b.write('- 関係者: ${related.map((r) => '[[$r]]').join(', ')}\n');
   final phones = [
     if (f.phone != null) 'TEL ${f.phone}',
     if (f.mobile != null) '携帯 ${f.mobile}',
@@ -119,6 +138,10 @@ String cardNoteMarkdown(CardFields f,
     b.write('- 住所: ${f.postal == null ? '' : '〒${f.postal} '}'
         '${pref == null ? '' : '[[$pref]]'}$rest\n');
   }
+  if (f.constructionLicense != null) b.write('- 建設業許可: ${f.constructionLicense}\n');
+  if (f.realEstateLicense != null) b.write('- 宅建業免許: ${f.realEstateLicense}\n');
+  if (f.corpNo != null) b.write('- 法人番号: ${f.corpNo}\n');
+  if (f.qualifications != null) b.write('- 資格: ${f.qualifications}\n');
   if (f.memo != null) b.write('- メモ: ${f.memo}\n');
   if (images.isNotEmpty) {
     b.write('\n');

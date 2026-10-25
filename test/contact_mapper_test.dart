@@ -50,6 +50,22 @@ void main() {
       expect(c.addresses.single.label.label, AddressLabel.work);
       expect(c.notes.single.note, '名刺取込 2026-10-25 (x.json)');
     });
+    test('trade fields go into the note; the division joins the department', () {
+      final c = toContact(
+          _card()
+            ..division = '建築事業部'
+            ..category = '協力会社'
+            ..related = '鈴木'
+            ..corpNo = '1234567890123'
+            ..constructionLicense = '東京都知事許可(般-5)第123456号'
+            ..qualifications = '1級建築施工管理技士',
+          scannedAt: DateTime(2026, 10, 25));
+      expect(c.organizations.single.departmentName, '建築事業部 営業部');
+      expect(
+          c.notes.single.note,
+          '区分: 協力会社\n関係者: 鈴木\n法人番号: 1234567890123\n'
+          '建設業許可: 東京都知事許可(般-5)第123456号\n資格: 1級建築施工管理技士\n名刺取込 2026-10-25');
+    });
     test('memo is prepended to the contact note', () {
       final c = toContact(_card()..memo = '展示会で名刺交換', scannedAt: DateTime(2026, 10, 25));
       expect(c.notes.single.note, '展示会で名刺交換\n名刺取込 2026-10-25');

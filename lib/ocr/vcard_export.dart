@@ -19,7 +19,14 @@ CardFields fieldsFromFrontmatter(Map<String, String> fm) => CardFields()
   ..url = fm['url']
   ..postal = fm['postal']
   ..address = fm['address']
-  ..memo = fm['memo'];
+  ..memo = fm['memo']
+  ..corpNo = fm['corp_no']
+  ..constructionLicense = fm['construction_license']
+  ..realEstateLicense = fm['real_estate_license']
+  ..qualifications = fm['qualifications']
+  ..division = fm['division']
+  ..category = fm['category']
+  ..related = fm['related'];
 
 /// One vCard 3.0 file for every card note in the vault, so the whole batch
 /// can be imported into Google Contacts / iCloud / another phone at once.

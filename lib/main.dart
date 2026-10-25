@@ -46,7 +46,15 @@ class ScanPage extends StatefulWidget {
 
   /// The account new contacts go into (null = device default).
   final Future<Account?> Function() account;
-  const ScanPage({super.key, required this.ready, required this.onSaved, required this.account});
+  /// Previously used 区分 / 部門 / 関係者 / 資格 values for the form's chips.
+  final Map<String, List<String>> suggestions;
+  const ScanPage({
+    super.key,
+    required this.ready,
+    required this.onSaved,
+    required this.account,
+    this.suggestions = const {},
+  });
 
   @override
   State<ScanPage> createState() => ScanPageState();
@@ -501,6 +509,7 @@ class ScanPageState extends State<ScanPage> {
                 controllers: _ctl,
                 lines: [...?_front, ...?_back],
                 missing: _missing,
+                suggestions: widget.suggestions,
               ),
             ),
           ],

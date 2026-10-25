@@ -23,7 +23,7 @@ class Learned {
   /// 'wrong→right' (single characters) -> times seen
   final Map<String, int> confusions = {};
 
-  static const _vocabFields = {'title', 'dept'};
+  static const _vocabFields = {'title', 'dept', 'division'};
   static const _textFields = {'name', 'company'};
 
   Learned();
