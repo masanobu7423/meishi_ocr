@@ -46,6 +46,10 @@ class CardList extends StatefulWidget {
   final String emptyText;
   /// Show 未確認 / 未登録 under the date for cards that still need work.
   final bool showStatus;
+  /// Size to the rows instead of filling the parent (for a list embedded in
+  /// another scroll view, e.g. the home screen); the selection bar then adds
+  /// height instead of squeezing the rows.
+  final bool shrinkWrap;
   const CardList({
     super.key,
     required this.cards,
@@ -54,6 +58,7 @@ class CardList extends StatefulWidget {
     this.onDelete,
     this.emptyText = 'まだ名刺がありません。撮影して保存すると、ここに並びます',
     this.showStatus = true,
+    this.shrinkWrap = false,
   });
 
   @override
@@ -133,6 +138,8 @@ class _CardListState extends State<CardList> {
       );
     }
     final list = ListView.separated(
+      shrinkWrap: widget.shrinkWrap,
+      physics: widget.shrinkWrap ? const NeverScrollableScrollPhysics() : null,
       itemCount: cards.length,
       separatorBuilder: (_, _) => const Divider(height: 1),
       itemBuilder: (context, i) {
@@ -178,7 +185,9 @@ class _CardListState extends State<CardList> {
       },
     );
     if (!_selecting) return list;
-    return Column(children: [_bar(context), Expanded(child: list)]);
+    return widget.shrinkWrap
+        ? Column(mainAxisSize: MainAxisSize.min, children: [_bar(context), list])
+        : Column(children: [_bar(context), Expanded(child: list)]);
   }
 }
 

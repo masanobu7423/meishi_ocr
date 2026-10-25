@@ -55,6 +55,22 @@ void main() {
     expect(taps, ['unreviewed', 'unregistered']);
   });
 
+  testWidgets('selecting a recent card on a narrow phone does not overflow', (t) async {
+    t.view.physicalSize = const Size(400, 800);
+    t.view.devicePixelRatio = 1;
+    addTearDown(t.view.resetPhysicalSize);
+    addTearDown(t.view.resetDevicePixelRatio);
+    await t.pumpWidget(app(HomeScreen(
+      cards: cards.take(1).toList(), vault: Directory.systemTemp, today: DateTime(2026, 10, 26),
+      onScan: () {}, onAlbum: () {}, onImport: () {}, onOpenCard: (_) {}, onSeeAll: () {},
+      onDelete: (_) async {},
+    )));
+    await t.longPress(find.text('名前0'));
+    await t.pump();
+    expect(t.takeException(), isNull, reason: 'the selection bar must not overflow the recent list');
+    expect(find.text('1 件を選択中'), findsOneWidget);
+  });
+
   testWidgets('home with no cards explains what to do', (t) async {
     await t.pumpWidget(app(HomeScreen(
       cards: const [], vault: Directory.systemTemp, today: DateTime(2026, 10, 26),

@@ -140,10 +140,13 @@ class HomeScreen extends StatelessWidget {
               TextButton(onPressed: onSeeAll, child: const Text('すべて見る')),
             ],
           ),
-          SizedBox(
-            height: recent.length * 72.0 + 8,
-            child: CardList(
-                cards: recent, vault: vault, onTap: onOpenCard, onDelete: onDelete, showStatus: false),
+          CardList(
+            cards: recent,
+            vault: vault,
+            onTap: onOpenCard,
+            onDelete: onDelete,
+            showStatus: false,
+            shrinkWrap: true,
           ),
         ],
       ],

@@ -1,6 +1,7 @@
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 
+import 'ocr/auto_shutter.dart';
 import 'ocr/burst.dart';
 import 'ocr/capture_guide.dart';
 import 'theme.dart';
@@ -29,6 +30,13 @@ class _CaptureScreenState extends State<CaptureScreen> {
   CameraController? _ctl;
   String? _error;
   bool _shooting = false;
+  // Burst auto-capture: the preview frames are sampled every third frame;
+  // a still, bright, textured card fires the shutter.
+  bool _auto = true;
+  final _sampler = FrameSampler();
+  final _shutter = AutoShutter();
+  int _frame = 0;
+  double _progress = 0;
 
   BurstSession? get _burst => widget.burst;
 
@@ -44,9 +52,11 @@ class _CaptureScreenState extends State<CaptureScreen> {
       final back = cams.firstWhere(
           (c) => c.lensDirection == CameraLensDirection.back,
           orElse: () => cams.first);
-      final ctl = CameraController(back, ResolutionPreset.high, enableAudio: false);
+      final ctl = CameraController(back, ResolutionPreset.high,
+          enableAudio: false, imageFormatGroup: ImageFormatGroup.yuv420);
       await ctl.initialize();
       if (!mounted) return;
+      if (_burst != null) await ctl.startImageStream(_onFrame);
       setState(() => _ctl = ctl);
     } catch (e) {
       setState(() => _error = 'カメラを開けません: $e');
@@ -55,8 +65,19 @@ class _CaptureScreenState extends State<CaptureScreen> {
 
   @override
   void dispose() {
-    _ctl?.dispose();
+    final ctl = _ctl;
+    if (ctl != null && ctl.value.isStreamingImages) ctl.stopImageStream();
+    ctl?.dispose();
     super.dispose();
+  }
+
+  void _onFrame(CameraImage img) {
+    if (!_auto || _shooting || ++_frame % 3 != 0) return;
+    final p = img.planes[0];
+    final stats = _sampler.sample(p.bytes, img.width, img.height, rowStride: p.bytesPerRow);
+    final fire = _shutter.feed(stats, DateTime.now());
+    if (_shutter.progress != _progress && mounted) setState(() => _progress = _shutter.progress);
+    if (fire) _shoot();
   }
 
   Future<void> _shoot() async {
@@ -114,17 +135,48 @@ class _CaptureScreenState extends State<CaptureScreen> {
                   children: [
                     CameraPreview(_ctl!),
                     CustomPaint(painter: _GuidePainter()),
+                    if (b != null)
+                      Align(
+                        alignment: const Alignment(0, -0.95),
+                        child: SegmentedButton<bool>(
+                          style: SegmentedButton.styleFrom(
+                              backgroundColor: Colors.black45, foregroundColor: Colors.white),
+                          segments: const [
+                            ButtonSegment(value: true, label: Text('自動撮影')),
+                            ButtonSegment(value: false, label: Text('手動')),
+                          ],
+                          selected: {_auto},
+                          onSelectionChanged: (s) => setState(() {
+                            _auto = s.first;
+                            _progress = 0;
+                          }),
+                        ),
+                      ),
                     Align(
-                      alignment: const Alignment(0, -0.8),
-                      child: Text(
-                        b == null
-                            ? '名刺を枠に合わせる　影と反射を避ける　水平に'
-                            : b.side == CardSide.front
-                                ? '表面を枠に合わせる　${b.cards} 枚保存済み'
-                                : '裏面を枠に合わせる　印字がなければ「白地で保管」',
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(
-                            color: Colors.white, fontSize: 16, shadows: [Shadow(blurRadius: 4)]),
+                      alignment: const Alignment(0, -0.75),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            b == null
+                                ? '名刺を枠に合わせる　影と反射を避ける　水平に'
+                                : b.side == CardSide.front
+                                    ? '表面を枠に合わせる　${b.cards} 枚保存済み'
+                                    : '裏面を枠に合わせる　印字がなければ「白地で保管」',
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
+                                color: Colors.white, fontSize: 16, shadows: [Shadow(blurRadius: 4)]),
+                          ),
+                          if (b != null && _auto)
+                            Padding(
+                              padding: const EdgeInsets.only(top: AppSpace.unit),
+                              child: Text(
+                                _progress > 0 ? '動かさないでください…' : '枠に合わせて止めると自動で撮ります',
+                                style: const TextStyle(
+                                    color: Colors.amber, fontSize: 14, shadows: [Shadow(blurRadius: 4)]),
+                              ),
+                            ),
+                        ],
                       ),
                     ),
                     Align(
