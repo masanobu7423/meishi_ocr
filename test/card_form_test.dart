@@ -106,6 +106,24 @@ void main() {
     expect(ctl['division']!.text, '建築事業部', reason: 'single-value fields are replaced');
   });
 
+  testWidgets('a tall header scrolls with the form instead of overflowing a short screen', (t) async {
+    // Landscape phone with the keyboard up leaves ~150dp for the body.
+    t.view.physicalSize = const Size(900, 150);
+    t.view.devicePixelRatio = 1;
+    addTearDown(t.view.resetPhysicalSize);
+    addTearDown(t.view.resetDevicePixelRatio);
+    await t.pumpWidget(app(CardForm(
+      controllers: ctl,
+      lines: const [OcrLine('株式会社サンライズ')],
+      header: const SizedBox(height: 300, child: Text('写真と操作')),
+    )));
+    expect(t.takeException(), isNull, reason: 'no RenderFlex overflow');
+    expect(find.text('写真と操作'), findsOneWidget);
+    await t.drag(find.byType(Scrollable).first, const Offset(0, -250));
+    await t.pump();
+    expect(find.text('氏名'), findsOneWidget, reason: 'the fields come into view by scrolling');
+  });
+
   testWidgets('survives 2x text scaling without overflow', (t) async {
     tall(t); // builds the dropdowns, address parts and chips too
     ctl['address']!.text = '東京都渋谷区神宮前1-2-3 サンライズビル5F';

@@ -140,11 +140,13 @@ class ScanPageState extends State<ScanPage> {
   /// until the user taps done (up to [_burstLimit]); every page is a front
   /// side, OCR'd, saved with the extractor's guess and queued for review,
   /// exactly like the folder import.
-  static const _burstLimit = 30;
+  // One page per scanner session: on some phones (Galaxy S25) the camera
+  // preview goes black for the second page of a multi-page session, so the
+  // burst loop reopens the scanner for every page instead.
   Future<List<String>> _captureMany() async {
     final scanner = DocumentScanner(
         options: DocumentScannerOptions(
-            pageLimit: _burstLimit, mode: ScannerMode.base, isGalleryImport: true));
+            pageLimit: 1, mode: ScannerMode.base, isGalleryImport: true));
     try {
       return (await scanner.scanDocument()).images ?? const [];
     } catch (e) {
@@ -182,7 +184,7 @@ class ScanPageState extends State<ScanPage> {
             child: const ListTile(
               leading: Icon(Icons.flip),
               title: Text('表と裏を交互に'),
-              subtitle: Text('表、裏、表、裏…の順に撮ります。裏がない名刺は表を 2 回'),
+              subtitle: Text('表、裏、表、裏…の順に 1 枚ずつ撮ります。裏がない名刺は表を 2 回'),
             ),
           ),
         ],
@@ -193,19 +195,29 @@ class ScanPageState extends State<ScanPage> {
     // so the scanner reopens at once) until the user closes the scanner.
     // 「まとめて取込」 reads the folder later, pairing <stem>_front / _back.
     final (store, _, _) = await _ready;
-    var cards = 0;
+    var cards = 0, backs = 0;
+    String? stem; // the card whose back comes next (paired mode)
     while (mounted) {
       final paths = await _captureMany();
-      if (paths.isEmpty) break;
-      final stems = shotStems(DateTime.now(), paired ? (paths.length + 1) ~/ 2 : paths.length);
-      for (final (i, p) in paths.indexed) {
-        final name = paired ? '${stems[i ~/ 2]}_${i.isEven ? "front" : "back"}' : stems[i];
-        await store.stashCapture(File(p), name);
+      if (paths.isEmpty) break; // closed the scanner
+      for (final p in paths) {
+        if (!paired) {
+          await store.stashCapture(File(p), shotStems(DateTime.now(), 1).first);
+          cards++;
+        } else if (stem == null) {
+          stem = shotStems(DateTime.now(), 1).first;
+          await store.stashCapture(File(p), '${stem}_front');
+          cards++;
+        } else {
+          await store.stashCapture(File(p), '${stem}_back');
+          backs++;
+          stem = null;
+        }
       }
-      cards += stems.length;
     }
     if (!mounted || cards == 0) return;
-    _toast('$cards 枚を取込フォルダに保存しました。「まとめて取込」で読み取って、1 枚ずつ確認できます');
+    final sides = paired ? '（表 $cards 枚、裏 $backs 枚）' : '';
+    _toast('$cards 枚を取込フォルダに保存しました$sides。「まとめて取込」で読み取って、1 枚ずつ確認できます');
   }
 
   /// Camera or album for the front (true) or back side.
@@ -563,19 +575,9 @@ class ScanPageState extends State<ScanPage> {
                 onBurst: Platform.isAndroid ? shootMany : null,
               ),
             )
-          else ...[
-            _CardHeader(
-              frontPath: _frontPath,
-              backPath: _backPath,
-              // The file stem is a dev name (DESIGN.md §7): show position only.
-              queueLabel: _queue.current == null ? null : '${_queue.label} 枚目を確認中',
-              onPrev: () => _move(false),
-              onNext: () => _move(true),
-              onBackShoot: () => shoot(false, ImageSource.camera),
-              onBackAlbum: () => shoot(false, ImageSource.gallery),
-              onViewPhoto: _viewPhoto,
-            ),
-            _ActionRow(actions: contactActions(_reviewed()), onTap: _launch),
+          else
+            // Photos and chips scroll with the form: a fixed header plus the
+            // keyboard overflowed in landscape.
             Expanded(
               child: CardForm(
                 key: ValueKey(_frontPath),
@@ -583,9 +585,24 @@ class ScanPageState extends State<ScanPage> {
                 lines: [...?_front, ...?_back],
                 missing: _missing,
                 suggestions: widget.suggestions,
+                header: Column(
+                  children: [
+                    _CardHeader(
+                      frontPath: _frontPath,
+                      backPath: _backPath,
+                      // The file stem is a dev name (DESIGN.md §7): show position only.
+                      queueLabel: _queue.current == null ? null : '${_queue.label} 枚目を確認中',
+                      onPrev: () => _move(false),
+                      onNext: () => _move(true),
+                      onBackShoot: () => shoot(false, ImageSource.camera),
+                      onBackAlbum: () => shoot(false, ImageSource.gallery),
+                      onViewPhoto: _viewPhoto,
+                    ),
+                    _ActionRow(actions: contactActions(_reviewed()), onTap: _launch),
+                  ],
+                ),
               ),
             ),
-          ],
         ],
       ),
       bottomNavigationBar: hasCard
@@ -701,7 +718,7 @@ class _ActionRow extends StatelessWidget {
   Widget build(BuildContext context) {
     if (actions.isEmpty) return const SizedBox.shrink();
     return Padding(
-      padding: const EdgeInsets.fromLTRB(AppSpace.gutter, AppSpace.unit, AppSpace.gutter, 0),
+      padding: const EdgeInsets.only(top: AppSpace.unit, bottom: AppSpace.unit),
       child: Wrap(
         spacing: AppSpace.unit,
         runSpacing: AppSpace.unit / 2,
@@ -788,7 +805,7 @@ class _CardHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(AppSpace.gutter, AppSpace.unit, AppSpace.gutter, 0),
+      padding: const EdgeInsets.only(top: AppSpace.unit, bottom: AppSpace.unit),
       child: Column(
         children: [
           if (queueLabel != null)

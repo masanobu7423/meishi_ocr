@@ -65,12 +65,16 @@ class CardForm extends StatefulWidget {
   final List<OcrLine> lines;
   final Set<String> missing;
   final Map<String, List<String>> suggestions;
+  /// Scrolls with the fields (photos, queue arrows, action chips), so a
+  /// short screen (landscape with the keyboard up) never overflows.
+  final Widget? header;
   const CardForm({
     super.key,
     required this.controllers,
     required this.lines,
     this.missing = const {},
     this.suggestions = const {},
+    this.header,
   });
 
   @override
@@ -228,6 +232,7 @@ class _CardFormState extends State<CardForm> {
       padding: const EdgeInsets.fromLTRB(
           AppSpace.gutter, AppSpace.unit, AppSpace.gutter, AppSpace.unit * 12),
       children: [
+        if (widget.header != null) widget.header!,
         for (final k in fieldOrder)
           Padding(
             padding: const EdgeInsets.only(bottom: AppSpace.unit),
