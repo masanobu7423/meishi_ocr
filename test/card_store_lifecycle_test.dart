@@ -4,6 +4,7 @@ import 'dart:io';
 
 import 'package:archive/archive.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:image/image.dart' as img;
 import 'package:meishi_ocr/ocr/card_status.dart';
 import 'package:meishi_ocr/ocr/card_store.dart';
 import 'package:meishi_ocr/ocr/ocr_line.dart';
@@ -151,6 +152,25 @@ void main() {
     expect(f.path.replaceAll('\\', '/'), endsWith('/inbox/shot_1_front.jpg'));
     expect(await f.readAsBytes(), [9, 8, 7]);
     expect((await store.inboxImages()).map((x) => x.uri.pathSegments.last), ['shot_1_front.jpg']);
+  });
+
+  test('stashBlankBack writes a white image as the back of a one-sided card', () async {
+    final f = await store.stashBlankBack('shot_1');
+    expect(f.path.replaceAll('\\', '/'), endsWith('/inbox/shot_1_back.png'));
+    final im = img.decodePng(await f.readAsBytes())!;
+    expect(im.width, greaterThan(im.height), reason: 'landscape like a card');
+    final p = im.getPixel(im.width ~/ 2, im.height ~/ 2);
+    expect([p.r, p.g, p.b], [255, 255, 255]);
+  });
+
+  test('replacing a side image with another format removes the old file', () async {
+    final png = await File('${tmp.path}/blank.png').writeAsBytes([0x89, 0x50, 1]);
+    await store.saveCard(stem: 'c1', front: front, back: const [], expected: yamada, backImage: png, scannedAt: oct25);
+    final jpg = await File('${tmp.path}/real.jpg').writeAsBytes([0xFF, 0xD8, 2]);
+    await store.saveCard(stem: 'c1', front: front, back: const [], expected: yamada, backImage: jpg);
+    final images = Directory('${tmp.path}/vault/images').listSync().map((e) => e.uri.pathSegments.last).toList();
+    expect(images, ['c1_back.jpg']);
+    expect((await store.loadCard('c1'))!.backImage!.path.replaceAll('\\', '/'), endsWith('images/c1_back.jpg'));
   });
 
   test('backups lists zip files newest first', () async {

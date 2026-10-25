@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:archive/archive.dart';
+import 'package:image/image.dart' as img;
 
 import 'card_note.dart';
 import 'card_status.dart';
@@ -36,6 +37,14 @@ class CardStore {
   Future<File> stashCapture(File src, String name) async {
     final ext = src.path.split('.').last.toLowerCase();
     return src.copy('${(await inbox()).path}/$name.$ext');
+  }
+
+  /// A white card-shaped image as `<stem>_back.png`: the back of a one-sided
+  /// card in a front/back burst, so the pairing stays aligned. It can be
+  /// replaced from the review screen later.
+  Future<File> stashBlankBack(String stem) async {
+    final blank = img.Image(width: 1200, height: 720)..clear(img.ColorRgb8(255, 255, 255));
+    return File('${(await inbox()).path}/${stem}_back.png').writeAsBytes(img.encodePng(blank));
   }
 
   Future<List<File>> inboxImages() async => (await inbox())
@@ -77,7 +86,15 @@ class CardStore {
       final dest = File('${vault.path}/$rel');
       // Re-saving a stored card passes the vault copy itself as the source;
       // copying a file onto itself truncates it on Linux/Android.
-      if (!_samePath(img, dest)) await img.copy(dest.path);
+      if (!_samePath(img, dest)) {
+        // A retaken side may change format (blank .png -> photo .jpg).
+        for (final old in Directory('${vault.path}/images').listSync().whereType<File>()) {
+          if (old.uri.pathSegments.last.startsWith('${stem}_$side.') && !_samePath(old, dest)) {
+            await old.delete();
+          }
+        }
+        await img.copy(dest.path);
+      }
       images[side] = rel;
     }
     final golden = await _dir('golden').create(recursive: true);

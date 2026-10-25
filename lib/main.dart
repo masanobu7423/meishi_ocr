@@ -209,10 +209,43 @@ class ScanPageState extends State<ScanPage> {
     final (store, _, _) = await _ready;
     var cards = 0, backs = 0;
     String? stem; // the card whose back comes next (paired mode)
+    var sessions = 0;
     while (mounted) {
-      if (cards + backs > 0) await _waitForScannerToClose();
+      if (sessions++ > 0) await _waitForScannerToClose();
       final paths = await _captureMany();
-      if (paths.isEmpty) break; // closed the scanner
+      if (paths.isEmpty) {
+        // Closing the scanner pauses: the user decides to go on or to end.
+        if (!mounted) return;
+        // true = go on, false = end, null = this card has no back (blank).
+        final again = await showDialog<bool?>(
+          context: context,
+          barrierDismissible: false,
+          builder: (c) => AlertDialog(
+            title: const Text('連続撮影を一時停止'),
+            content: Text(burstPauseText(cards, backs, paired: paired, nextIsBack: stem != null)),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('終了')),
+              if (stem != null)
+                TextButton(
+                  onPressed: () => Navigator.pop(c, null), // null = blank back, then go on
+                  child: const Text('裏なし（白紙を入れる）'),
+                ),
+              FilledButton.icon(
+                onPressed: () => Navigator.pop(c, true),
+                icon: const Icon(Icons.camera_alt),
+                label: const Text('続ける'),
+              ),
+            ],
+          ),
+        );
+        if (again == false) break;
+        if (again == null && stem != null) {
+          await store.stashBlankBack(stem);
+          backs++;
+          stem = null;
+        }
+        continue;
+      }
       for (final p in paths) {
         if (!paired) {
           await store.stashCapture(File(p), shotStems(DateTime.now(), 1).first);
@@ -858,6 +891,24 @@ class _CardHeader extends StatelessWidget {
               ),
             ],
           ),
+          // A back that exists (maybe the blank stand-in from a burst) can be
+          // replaced; saving overwrites the stored image.
+          if (backPath != null)
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                TextButton.icon(
+                  onPressed: onBackShoot,
+                  icon: const Icon(Icons.camera_alt, size: AppSize.iconSmall),
+                  label: const Text('裏を撮り直す'),
+                ),
+                IconButton(
+                  tooltip: '裏をアルバムから選び直す',
+                  icon: const Icon(Icons.photo_library_outlined),
+                  onPressed: onBackAlbum,
+                ),
+              ],
+            ),
         ],
       ),
     );
