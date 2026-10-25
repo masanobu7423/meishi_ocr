@@ -40,4 +40,14 @@ void main() {
     q.removeCurrent();
     expect(q.current, isNull);
   });
+
+  test('shotStems names a burst of captures uniquely and file-safely', () {
+    final stems = shotStems(DateTime(2026, 10, 25, 18, 12, 7, 42), 3);
+    expect(stems,
+        ['shot_20261025-181207042_1', 'shot_20261025-181207042_2', 'shot_20261025-181207042_3']);
+    expect(stems.toSet().length, 3);
+    expect(shotStems(DateTime(2026, 10, 25, 18, 12, 7, 43), 1), isNot(stems.sublist(0, 1)));
+    expect(stems.every((s) => RegExp(r'^[\w-]+$').hasMatch(s)), isTrue);
+    expect(shotStems(DateTime(2026), 0), isEmpty);
+  });
 }

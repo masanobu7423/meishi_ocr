@@ -8,6 +8,7 @@ class CardSummary {
   final String stem; // golden JSON stem (source without .json)
   final String name;
   final String? company, title, memo, imageFront, imageBack, scanned;
+  final String? kana, phone, mobile, email;
 
   const CardSummary({
     required this.noteStem,
@@ -19,9 +20,14 @@ class CardSummary {
     this.imageFront,
     this.imageBack,
     this.scanned,
+    this.kana,
+    this.phone,
+    this.mobile,
+    this.email,
   });
 
-  String get _haystack => _fold('$name ${company ?? ''} ${title ?? ''} ${memo ?? ''}');
+  String get _haystack => _fold(
+      [name, kana, company, title, memo, phone, mobile, email].whereType<String>().join(' '));
 
   /// Case-, width- and kana-insensitive substring match; empty query = all.
   bool matches(String query) => query.trim().isEmpty || _haystack.contains(_fold(query));
@@ -43,6 +49,10 @@ List<CardSummary> cardSummaries(Map<String, String> notes) {
       imageFront: fm['image_front'],
       imageBack: fm['image_back'],
       scanned: fm['scanned'],
+      kana: fm['kana'],
+      phone: fm['phone'],
+      mobile: fm['mobile'],
+      email: fm['email'],
     ));
   }
   out.sort((a, b) => (b.scanned ?? '').compareTo(a.scanned ?? ''));
@@ -53,9 +63,10 @@ const _halfKana = 'ｦｧｨｩｪｫｬｭｮｯｰｱｲｳｴｵｶｷｸｹ�
 const _fullKana = 'ヲァィゥェォャュョッーアイウエオカキクケコサシスセソタチツテトナニヌネノハヒフヘホマミムメモヤユヨラリルレロワン';
 
 /// Search key: half-width ASCII/kana -> full-width kana, hiragana ->
-/// katakana, lower case, no spaces.
+/// katakana, lower case, no spaces or hyphens (so phone numbers match with
+/// or without them).
 String _fold(String s) {
-  var t = normalize(s).toLowerCase().replaceAll(' ', '');
+  var t = normalize(s).toLowerCase().replaceAll(RegExp(r'[\s\-]'), '');
   // half-width katakana with (semi-)voiced marks first, then plain
   t = t.replaceAllMapped(RegExp('([$_halfKana])([ﾞﾟ])'), (m) {
     final base = _fullKana[_halfKana.indexOf(m[1]!)];

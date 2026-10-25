@@ -4,8 +4,12 @@ import 'package:meishi_ocr/ocr/history.dart';
 const _a = '''---
 type: meishi
 name: 山田 太郎
+kana: やまだ たろう
 company: 株式会社サンライズ
 title: 部長
+phone: 03-1234-5678
+mobile: 090-9876-5432
+email: taro.yamada@sunrise.co.jp
 scanned: 2026-10-24
 source: k01.json
 image_front: images/k01_front.jpg
@@ -49,5 +53,16 @@ void main() {
     expect(s.where((c) => c.matches('')).length, 2);
     expect(s.where((c) => c.matches('ｻﾝﾗｲｽﾞ')).length, 1, reason: 'half-width katakana');
     expect(s.where((c) => c.matches('いない')).length, 0);
+  });
+
+  test('matches also searches reading, phone numbers (hyphens ignored) and email', () {
+    final s = cardSummaries({'a': _a, 'b': _b});
+    expect(s.where((c) => c.matches('やまだ')).length, 1, reason: 'kana');
+    expect(s.where((c) => c.matches('ヤマダタロウ')).length, 1, reason: 'kana, katakana query');
+    expect(s.where((c) => c.matches('0312345678')).length, 1, reason: 'phone without hyphens');
+    expect(s.where((c) => c.matches('1234-5678')).length, 1, reason: 'phone fragment');
+    expect(s.where((c) => c.matches('９８７６')).length, 1, reason: 'mobile, full-width digits');
+    expect(s.where((c) => c.matches('sunrise.co')).length, 1, reason: 'email');
+    expect(s.where((c) => c.matches('5432')).first.name, '山田 太郎');
   });
 }

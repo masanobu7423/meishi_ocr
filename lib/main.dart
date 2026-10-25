@@ -125,6 +125,40 @@ class ScanPageState extends State<ScanPage> {
         context, MaterialPageRoute(builder: (_) => CaptureScreen(label: label)));
   }
 
+  /// Burst mode (Android only): the document scanner keeps taking pages
+  /// until the user taps done (up to [_burstLimit]); every page is a front
+  /// side, OCR'd, saved with the extractor's guess and queued for review,
+  /// exactly like the folder import.
+  static const _burstLimit = 30;
+  Future<List<String>> _captureMany() async {
+    final scanner = DocumentScanner(
+        options: DocumentScannerOptions(
+            pageLimit: _burstLimit, mode: ScannerMode.base, isGalleryImport: true));
+    try {
+      return (await scanner.scanDocument()).images ?? const [];
+    } catch (e) {
+      // Backing out of the scanner is reported as an exception too.
+      if (e.toString().toLowerCase().contains('cancel')) return const [];
+      final (store, _, _) = await _ready;
+      await store.appendError('document_scanner burst', e);
+      if (mounted) {
+        setState(() => _error = '続けて撮影を開始できませんでした。「表を撮影」で 1 枚ずつ撮ってください');
+      }
+      return const [];
+    } finally {
+      scanner.close();
+    }
+  }
+
+  Future<void> shootMany() async {
+    final (_, ocr, _) = await _ready;
+    if (ocr.busy) return;
+    final paths = await _captureMany();
+    if (paths.isEmpty) return;
+    final stems = shotStems(DateTime.now(), paths.length);
+    await _importFiles([for (final p in paths) File(p)], stems: stems);
+  }
+
   /// Camera or album for the front (true) or back side.
   Future<void> shoot(bool front, ImageSource source) async {
     final (_, ocr, _) = await _ready;
@@ -343,13 +377,23 @@ class ScanPageState extends State<ScanPage> {
       _toast('取込フォルダに画像がありません（${(await store.inbox()).path}）');
       return;
     }
+    await _importFiles(files);
+  }
+
+  /// OCR every file as a front side, save it with the extractor's guess and
+  /// queue it for review. [stems] default to the file names.
+  Future<void> _importFiles(List<File> files, {List<String>? stems}) async {
+    final (store, ocr, _) = await _ready;
     _queue.clear();
-    var levelled = 0;
+    var levelled = 0, skipped = 0;
     for (final (i, f) in files.indexed) {
-      final stem = f.uri.pathSegments.last.replaceAll(RegExp(r'\.\w+$'), '');
-      setState(() => _progress = '読み取り中 ${i + 1}/${files.length}: $stem');
+      final stem = stems?[i] ?? f.uri.pathSegments.last.replaceAll(RegExp(r'\.\w+$'), '');
+      setState(() => _progress = '読み取り中 ${i + 1}/${files.length}');
       final r = await ocr.recognize(f.path, front: true);
-      if (r.lines.isEmpty) continue;
+      if (r.lines.isEmpty) {
+        skipped++;
+        continue;
+      }
       if (r.deskewedBy != null) levelled++;
       _front = r.lines;
       _back = null;
@@ -361,13 +405,20 @@ class ScanPageState extends State<ScanPage> {
           back: const [],
           expected: _fields!.toJson(),
           frontImage: f);
-      _queue.items.add((stem: stem, front: r.lines, imagePath: f.path));
+      // Queue the vault copy, not the scanner's temp file: the OS may clean
+      // the cache before the user gets to this card.
+      final saved = await store.loadCard(stem);
+      _queue.items.add((stem: stem, front: r.lines, imagePath: saved?.frontImage?.path ?? f.path));
     }
     _showQueued();
     setState(() => _progress = null);
     widget.onSaved();
-    _toast('${_queue.items.length} 枚を取り込みました'
-        '${levelled == 0 ? "" : "（$levelled 枚は傾きを補正）"}。1 枚ずつ確認して登録してください');
+    final n = _queue.items.length;
+    final unread = skipped == 0 ? '' : '。$skipped 枚は文字を読み取れませんでした。撮り直してください';
+    _toast(n == 0
+        ? '読み取れた名刺がありません$unread'
+        : '$n 枚を取り込みました${levelled == 0 ? "" : "（$levelled 枚は傾きを補正）"}$unread。'
+            '1 枚ずつ確認して登録してください');
   }
 
   void _showQueued() {
@@ -428,6 +479,7 @@ class ScanPageState extends State<ScanPage> {
               child: _EmptyState(
                 onShoot: () => shoot(true, ImageSource.camera),
                 onAlbum: () => shoot(true, ImageSource.gallery),
+                onBurst: Platform.isAndroid ? shootMany : null,
               ),
             )
           else ...[
@@ -501,7 +553,8 @@ class ScanPageState extends State<ScanPage> {
 /// Scan tab with nothing scanned yet.
 class _EmptyState extends StatelessWidget {
   final VoidCallback onShoot, onAlbum;
-  const _EmptyState({required this.onShoot, required this.onAlbum});
+  final VoidCallback? onBurst; // null where the document scanner is unavailable
+  const _EmptyState({required this.onShoot, required this.onAlbum, this.onBurst});
 
   @override
   Widget build(BuildContext context) {
@@ -533,6 +586,14 @@ class _EmptyState extends StatelessWidget {
               icon: const Icon(Icons.photo_library_outlined),
               label: const Text('アルバムから選ぶ'),
             ),
+            if (onBurst != null) ...[
+              const SizedBox(height: AppSpace.unit),
+              OutlinedButton.icon(
+                onPressed: onBurst,
+                icon: const Icon(Icons.burst_mode_outlined),
+                label: const Text('続けて撮影（あとでまとめて確認）'),
+              ),
+            ],
           ],
         ),
       ),

@@ -105,7 +105,7 @@ class _SearchScreenState extends State<SearchScreen> {
             autofocus: false,
             decoration: const InputDecoration(
               prefixIcon: Icon(Icons.search),
-              labelText: '氏名・会社・役職・メモで探す',
+              labelText: '氏名・ふりがな・会社・電話・メールで探す',
             ),
             onChanged: (v) => setState(() => _query = v),
           ),
