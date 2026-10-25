@@ -120,6 +120,12 @@ void main() {
     expect(names.any((n) => n.startsWith('backup/')), isFalse, reason: 'no zip inside the zip');
   });
 
+  test('settings round-trip and default to empty', () async {
+    expect(await store.loadSettings(), isEmpty);
+    await store.saveSettings({'accountId': 'g1'});
+    expect((await store.loadSettings())['accountId'], 'g1');
+  });
+
   test('appendError appends one line per failure', () async {
     await store.appendError('x.jpg', 'boom');
     await store.appendError('y.jpg', 'bang');

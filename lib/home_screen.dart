@@ -15,6 +15,10 @@ class HomeScreen extends StatelessWidget {
   final VoidCallback onScan, onAlbum, onImport, onSeeAll;
   final ValueChanged<CardSummary> onOpenCard;
 
+  /// Where registrations go, e.g. "taro@gmail.com（Google）"; null = unknown.
+  final String? accountLabel;
+  final VoidCallback? onChangeAccount;
+
   const HomeScreen({
     super.key,
     required this.cards,
@@ -25,6 +29,8 @@ class HomeScreen extends StatelessWidget {
     required this.onImport,
     required this.onOpenCard,
     required this.onSeeAll,
+    this.accountLabel,
+    this.onChangeAccount,
   });
 
   @override
@@ -75,6 +81,19 @@ class HomeScreen extends StatelessWidget {
             ),
           ],
         ),
+        if (accountLabel != null) ...[
+          const SizedBox(height: AppSpace.unit),
+          ListTile(
+            dense: true,
+            contentPadding: EdgeInsets.zero,
+            leading: Icon(Icons.cloud_sync_outlined, color: scheme.onSurfaceVariant, semanticLabel: '同期'),
+            title: Text('登録先: $accountLabel', style: text.bodyMedium),
+            subtitle: Text('Google アカウントに登録すると、端末が自動で Google の連絡先と同期します',
+                style: text.labelSmall?.copyWith(color: scheme.onSurfaceVariant)),
+            trailing: onChangeAccount == null ? null : const Icon(Icons.chevron_right),
+            onTap: onChangeAccount,
+          ),
+        ],
         const SizedBox(height: AppSpace.gutter * 1.5),
         if (cards.isEmpty)
           Text('最初の名刺を撮影すると、ここに最近の名刺が並びます。',

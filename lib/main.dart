@@ -5,11 +5,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_contacts/flutter_contacts.dart';
 import 'package:google_mlkit_document_scanner/google_mlkit_document_scanner.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import 'app_shell.dart';
 import 'capture_screen.dart';
 import 'card_form.dart';
 import 'duplicate_screen.dart';
+import 'ocr/actions.dart';
 import 'ocr/card_store.dart';
 import 'ocr/contact_mapper.dart';
 import 'ocr/extractor.dart';
@@ -41,7 +43,10 @@ class ScanPage extends StatefulWidget {
 
   /// Called after anything was written to the store, so lists can refresh.
   final VoidCallback onSaved;
-  const ScanPage({super.key, required this.ready, required this.onSaved});
+
+  /// The account new contacts go into (null = device default).
+  final Future<Account?> Function() account;
+  const ScanPage({super.key, required this.ready, required this.onSaved, required this.account});
 
   @override
   State<ScanPage> createState() => ScanPageState();
@@ -226,7 +231,8 @@ class ScanPageState extends State<ScanPage> {
       if (!done) return;
     } else {
       await _saveReviewed(quiet: true);
-      await FlutterContacts.create(toContact(fields, scannedAt: DateTime.now(), source: _source));
+      await FlutterContacts.create(toContact(fields, scannedAt: DateTime.now(), source: _source),
+          account: await widget.account());
       if (!mounted) return;
       _toast('電話帳に登録しました');
     }
@@ -271,13 +277,15 @@ class ScanPageState extends State<ScanPage> {
         return true;
       case DuplicateAction.separate:
         await _saveReviewed(quiet: true);
-        await FlutterContacts.create(toContact(fields, scannedAt: now, source: _source));
+        await FlutterContacts.create(toContact(fields, scannedAt: now, source: _source),
+            account: await widget.account());
         if (mounted) _toast('別の連絡先として登録しました');
         return true;
       case DuplicateAction.replace:
         await _saveReviewed(quiet: true);
         await FlutterContacts.delete(id);
-        await FlutterContacts.create(toContact(fields, scannedAt: now, source: _source));
+        await FlutterContacts.create(toContact(fields, scannedAt: now, source: _source),
+            account: await widget.account());
         if (mounted) _toast('既存の連絡先を削除し、名刺の内容で登録しました');
         return true;
       case DuplicateAction.editExisting:
@@ -342,6 +350,17 @@ class ScanPageState extends State<ScanPage> {
     if (forward ? _queue.next() : _queue.prev()) setState(_showQueued);
   }
 
+  /// Phone / mail / web / map: hand the URI to the matching app.
+  Future<void> _launch(ContactAction a) async {
+    final ok = await launchUrl(a.uri, mode: LaunchMode.externalApplication);
+    if (!ok && mounted) {
+      setState(() => _error = '${a.label}を開けるアプリが見つかりません');
+    }
+  }
+
+  void _viewPhoto(String path, String label) => Navigator.push(
+      context, MaterialPageRoute(builder: (_) => _PhotoViewer(path: path, label: label)));
+
   // ---- UI ------------------------------------------------------------------
 
   @override
@@ -385,7 +404,9 @@ class ScanPageState extends State<ScanPage> {
               onNext: () => _move(true),
               onBackShoot: () => shoot(false, ImageSource.camera),
               onBackAlbum: () => shoot(false, ImageSource.gallery),
+              onViewPhoto: _viewPhoto,
             ),
+            _ActionRow(actions: contactActions(_reviewed()), onTap: _launch),
             Expanded(
               child: CardForm(
                 key: ValueKey(_frontPath),
@@ -476,10 +497,70 @@ class _EmptyState extends StatelessWidget {
   }
 }
 
+/// Phone / mobile / mail / web / map chips for the card on screen.
+class _ActionRow extends StatelessWidget {
+  final List<ContactAction> actions;
+  final ValueChanged<ContactAction> onTap;
+  const _ActionRow({required this.actions, required this.onTap});
+
+  static const _icons = {
+    'phone': Icons.call,
+    'mobile': Icons.smartphone,
+    'email': Icons.mail_outline,
+    'url': Icons.language,
+    'address': Icons.map_outlined,
+  };
+
+  @override
+  Widget build(BuildContext context) {
+    if (actions.isEmpty) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(AppSpace.gutter, AppSpace.unit, AppSpace.gutter, 0),
+      child: Wrap(
+        spacing: AppSpace.unit,
+        runSpacing: AppSpace.unit / 2,
+        children: [
+          for (final a in actions)
+            ActionChip(
+              avatar: Icon(_icons[a.key], size: AppSize.iconSmall),
+              label: Text(a.label),
+              tooltip: '${a.label}を開く',
+              onPressed: () => onTap(a),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Full-screen, pinch-to-zoom view of one card photo.
+class _PhotoViewer extends StatelessWidget {
+  final String path, label;
+  const _PhotoViewer({required this.path, required this.label});
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+        backgroundColor: Theme.of(context).colorScheme.scrim,
+        appBar: AppBar(
+          title: Text('$labelの写真'),
+          backgroundColor: Theme.of(context).colorScheme.scrim,
+          foregroundColor: Theme.of(context).colorScheme.onInverseSurface,
+        ),
+        body: Center(
+          child: InteractiveViewer(
+            minScale: 1,
+            maxScale: 6,
+            child: Image.file(File(path), fit: BoxFit.contain, semanticLabel: '$labelの写真'),
+          ),
+        ),
+      );
+}
+
 /// The card photos (the one memorable element, DESIGN.md §1) and batch nav.
 class _CardHeader extends StatelessWidget {
   final String? frontPath, backPath, queueLabel;
   final VoidCallback onPrev, onNext, onBackShoot, onBackAlbum;
+  final void Function(String path, String label) onViewPhoto;
   const _CardHeader({
     required this.frontPath,
     required this.backPath,
@@ -488,24 +569,32 @@ class _CardHeader extends StatelessWidget {
     required this.onNext,
     required this.onBackShoot,
     required this.onBackAlbum,
+    required this.onViewPhoto,
   });
 
   Widget _thumb(BuildContext context, String? path, String label) {
     final scheme = Theme.of(context).colorScheme;
+    final exists = path != null && File(path).existsSync();
     return ClipRRect(
       borderRadius: BorderRadius.circular(AppRadius.medium),
-      child: Container(
+      child: Material(
         color: scheme.surfaceContainerHigh,
-        height: AppSize.thumb,
-        child: path != null && File(path).existsSync()
-            ? Semantics(
-                label: '$labelの写真',
-                image: true,
-                child: Image.file(File(path), fit: BoxFit.cover, width: double.infinity),
-              )
-            : Center(
-                child: Text('$labelなし', style: TextStyle(color: scheme.onSurfaceVariant)),
-              ),
+        child: InkWell(
+          onTap: exists ? () => onViewPhoto(path, label) : null,
+          child: SizedBox(
+            height: AppSize.thumb,
+            child: exists
+                ? Semantics(
+                    label: '$labelの写真（タップで拡大）',
+                    image: true,
+                    button: true,
+                    child: Image.file(File(path), fit: BoxFit.cover, width: double.infinity),
+                  )
+                : Center(
+                    child: Text('$labelなし', style: TextStyle(color: scheme.onSurfaceVariant)),
+                  ),
+          ),
+        ),
       ),
     );
   }

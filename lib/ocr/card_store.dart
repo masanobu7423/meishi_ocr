@@ -129,6 +129,22 @@ class CardStore {
     );
   }
 
+  /// Small user preferences (`<root>/settings.json`), e.g. the account to
+  /// register contacts into.
+  Future<Map<String, dynamic>> loadSettings() async {
+    final f = File('${root.path}/settings.json');
+    if (!f.existsSync()) return {};
+    try {
+      return jsonDecode(await f.readAsString()) as Map<String, dynamic>;
+    } catch (e) {
+      await appendError('settings.json', e);
+      return {};
+    }
+  }
+
+  Future<void> saveSettings(Map<String, dynamic> settings) =>
+      File('${root.path}/settings.json').writeAsString(jsonEncode(settings));
+
   /// Rules learned from the user's corrections (`<root>/learned.json`).
   Future<Learned> loadLearned() async {
     final f = File('${root.path}/learned.json');
