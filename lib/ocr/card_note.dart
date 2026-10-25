@@ -36,9 +36,14 @@ String? jobCategory(String? dept, String? title) {
 String _ymd(DateTime t) =>
     '${t.year}-${t.month.toString().padLeft(2, '0')}-${t.day.toString().padLeft(2, '0')}';
 
-/// Safe vault filename: `<name>_<yyyy-mm-dd>.md`, FastaLife's sanitizer set.
-String cardNoteFilename(CardFields f, DateTime scannedAt) =>
-    '${(f.name ?? '名無し').replaceAll(RegExp(r'[\\/:*?"<>|\s]'), '_')}_${_ymd(scannedAt)}.md';
+/// A name as a file stem (FastaLife's sanitizer set); `名無し` when empty.
+String safeFileStem(String? name) {
+  final s = (name ?? '').replaceAll(RegExp(r'[\\/:*?"<>|\s]'), '_');
+  return s.isEmpty ? '名無し' : s;
+}
+
+/// Safe vault filename: `<name>_<yyyy-mm-dd>.md`.
+String cardNoteFilename(CardFields f, DateTime scannedAt) => '${safeFileStem(f.name)}_${_ymd(scannedAt)}.md';
 
 /// [images] maps 'front' / 'back' to paths relative to the vault root
 /// (e.g. `images/c1_front.jpg`); they become Obsidian embeds.

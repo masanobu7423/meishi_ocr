@@ -23,6 +23,8 @@ import 'ocr/merge.dart';
 import 'ocr/ocr_line.dart';
 import 'ocr/ocr_pipeline.dart';
 import 'ocr/review_queue.dart';
+import 'ocr/vcard_export.dart' show vcardOfFields;
+import 'share.dart';
 import 'theme.dart';
 
 // Thin UI over three parts: OcrPipeline (image -> lines, tilt correction),
@@ -424,6 +426,19 @@ class ScanPageState extends State<ScanPage> {
     _toast(removed ? '削除しました' : 'この名刺はすでに削除されています');
   }
 
+  /// The card on screen (as edited) as a vCard through the share sheet.
+  Future<void> _shareCard() async {
+    final fields = fieldsFromJson(_reviewed());
+    if (fields.name == null) {
+      setState(() => _error = '氏名が空です。共有する前に氏名を入れてください');
+      return;
+    }
+    // ponytail: the vCard NOTE carries today's date even for a stored card; fine for sharing.
+    if (!await shareVcard(fields.name!, vcardOfFields([fields])) && mounted) {
+      setState(() => _error = '共有できませんでした');
+    }
+  }
+
   /// Drop an unsaved read (a single scan that went wrong) and go back to
   /// the empty state; nothing in the store is touched.
   Future<void> _discard() async {
@@ -710,6 +725,11 @@ class ScanPageState extends State<ScanPage> {
                       tooltip: '次の名刺を撮影',
                       icon: const Icon(Icons.add_a_photo_outlined),
                       onPressed: () => shoot(true, ImageSource.camera),
+                    ),
+                    IconButton(
+                      tooltip: 'この名刺を共有',
+                      icon: const Icon(Icons.share_outlined),
+                      onPressed: _progress == null ? _shareCard : null,
                     ),
                     IconButton(
                       // Stored card: delete it. Fresh read: discard it.

@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:meishi_ocr/ocr/vcard_export.dart';
+import 'package:meishi_ocr/ocr/extractor.dart';
 
 const _note = '''---
 type: meishi
@@ -40,6 +41,17 @@ void main() {
       'corpNo': 'c', 'constructionLicense': 'cl', 'realEstateLicense': 'rl',
       'qualifications': 'q', 'division': 'dv', 'category': 'ct', 'related': 'r',
     });
+  });
+
+  test('vcardOfFields makes one VCARD per card', () {
+    final vcf = vcardOfFields([
+      CardFields()..name = '山田 太郎'..phone = '03-1234-5678',
+      CardFields()..name = '佐藤 花子'..email = 'hanako@example.com',
+    ], scannedAt: DateTime(2026, 10, 25));
+    expect('BEGIN:VCARD'.allMatches(vcf).length, 2);
+    expect(vcf, contains('N:山田;太郎;'));
+    expect(vcf, contains('hanako@example.com'));
+    expect(vcardOfFields(const []), '');
   });
 
   test('vcardOfNotes exports one VCARD per card note and skips the index', () {

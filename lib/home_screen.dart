@@ -21,8 +21,8 @@ class HomeScreen extends StatelessWidget {
   final VoidCallback? onChangeAccount;
   /// Opens the list filtered to what still needs work (未確認 / 未登録).
   final ValueChanged<StatusFilter>? onContinue;
-  /// Long-press selection and deletion in the recent list.
-  final Future<void> Function(List<CardSummary>)? onDelete;
+  /// Long-press selection, deletion and sharing in the recent list.
+  final Future<void> Function(List<CardSummary>)? onDelete, onShare;
 
   const HomeScreen({
     super.key,
@@ -38,6 +38,7 @@ class HomeScreen extends StatelessWidget {
     this.onChangeAccount,
     this.onContinue,
     this.onDelete,
+    this.onShare,
   });
 
   @override
@@ -156,6 +157,7 @@ class HomeScreen extends StatelessWidget {
             vault: vault,
             onTap: onOpenCard,
             onDelete: onDelete,
+            onShare: onShare,
             showStatus: false,
             shrinkWrap: true,
           ),

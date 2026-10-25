@@ -17,6 +17,7 @@ import 'ocr/ocr_pipeline.dart';
 import 'ocr/sync.dart';
 import 'ocr/vault_index.dart';
 import 'ocr/vcard_export.dart';
+import 'share.dart';
 
 /// Android: `/sdcard/Android/data/<pkg>/files` (reachable with plain adb pull
 /// and the Files app). Elsewhere: app documents.
@@ -69,6 +70,42 @@ class _HomeShellState extends State<HomeShell> {
   Future<void> _open(CardSummary c) async {
     _go(1);
     await _scanKey.currentState?.loadStoredCard(c);
+  }
+
+  /// Selected cards as one vCard through the system share sheet.
+  Future<void> _shareCards(List<CardSummary> cards) async {
+    if (cards.isEmpty) return;
+    final (store, _) = await _ready;
+    final notes = await store.notes();
+    final vcf = vcardOfNotes({for (final c in cards) c.noteStem: ?notes[c.noteStem]});
+    final name = cards.length == 1 ? cards.single.name : '名刺${cards.length}件';
+    if (vcf.isEmpty || !await shareVcard(name, vcf)) {
+      if (mounted) _toast('共有できませんでした');
+    }
+  }
+
+  /// Every card as one vCard, handed to the share sheet (Drive, mail, …).
+  Future<void> _shareAllVcard() async {
+    final (store, _) = await _ready;
+    final (file, n) = await store.exportVcard();
+    if (n == 0) {
+      if (mounted) _toast('共有できる名刺がありません');
+      return;
+    }
+    if (!await shareFile(file, mime: 'text/vcard', subject: '名刺 $n 件 (vCard)') && mounted) _toast('共有できませんでした');
+  }
+
+  /// A fresh backup zip to the share sheet: the way to get it off the phone.
+  Future<void> _shareBackup() async {
+    final (store, _) = await _ready;
+    final (zip, n) = await store.backup();
+    if (n == 0) {
+      if (mounted) _toast('バックアップする名刺がありません');
+      return;
+    }
+    if (!await shareFile(zip, mime: 'application/zip', subject: '名刺スキャンのバックアップ') && mounted) {
+      _toast('共有できませんでした');
+    }
   }
 
   /// Selected on the home / search / list screens: confirm once, delete
@@ -309,13 +346,17 @@ class _HomeShellState extends State<HomeShell> {
               'account' => _chooseAccount(),
               'sync' => _syncAll(),
               'vcard' => _exportVcard(),
+              'share_vcard' => _shareAllVcard(),
+              'share_backup' => _shareBackup(),
               'restore' => _restore(),
               _ => _backup(),
             },
             itemBuilder: (_) => const [
               PopupMenuItem(value: 'account', child: Text('登録先のアカウント')),
               PopupMenuItem(value: 'sync', child: Text('未登録の名刺を電話帳に登録')),
+              PopupMenuItem(value: 'share_vcard', child: Text('全件を vCard で共有')),
               PopupMenuItem(value: 'vcard', child: Text('全件を vCard に書き出す')),
+              PopupMenuItem(value: 'share_backup', child: Text('バックアップを共有')),
               PopupMenuItem(value: 'backup', child: Text('バックアップを作る')),
               PopupMenuItem(value: 'restore', child: Text('バックアップから復元')),
             ],
@@ -356,6 +397,7 @@ class _HomeShellState extends State<HomeShell> {
                 },
                 onOpenCard: _open,
                 onDelete: _deleteCards,
+                onShare: _shareCards,
                 onSeeAll: () => _go(3),
                 onContinue: (f) {
                   setState(() => _listFilter = f);
@@ -369,12 +411,14 @@ class _HomeShellState extends State<HomeShell> {
                 account: _resolveAccount,
                 suggestions: _suggestions,
               ),
-              SearchScreen(cards: cards, vault: store.vaultDir, onTap: _open, onDelete: _deleteCards),
+              SearchScreen(
+                  cards: cards, vault: store.vaultDir, onTap: _open, onDelete: _deleteCards, onShare: _shareCards),
               ListScreen(
                 cards: cards,
                 vault: store.vaultDir,
                 onTap: _open,
                 onDelete: _deleteCards,
+                onShare: _shareCards,
                 filter: _listFilter,
                 onFilter: (f) => setState(() => _listFilter = f),
               ),

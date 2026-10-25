@@ -47,6 +47,8 @@ class CardList extends StatefulWidget {
   final Directory vault;
   final ValueChanged<CardSummary> onTap;
   final Future<void> Function(List<CardSummary> cards)? onDelete;
+  /// Share the selected cards (as one vCard) through the system sheet.
+  final Future<void> Function(List<CardSummary> cards)? onShare;
   final String emptyText;
   /// Show 未確認 / 未登録 under the date for cards that still need work.
   final bool showStatus;
@@ -60,6 +62,7 @@ class CardList extends StatefulWidget {
     required this.vault,
     required this.onTap,
     this.onDelete,
+    this.onShare,
     this.emptyText = 'まだ名刺がありません。撮影して保存すると、ここに並びます',
     this.showStatus = true,
     this.shrinkWrap = false,
@@ -115,6 +118,16 @@ class _CardListState extends State<CardList> {
                 },
                 icon: const Icon(Icons.edit_outlined, size: AppSize.iconSmall),
                 label: const Text('修正'),
+              ),
+            if (widget.onShare != null)
+              TextButton.icon(
+                onPressed: () {
+                  final chosen = _chosen;
+                  setState(_selected.clear);
+                  widget.onShare!(chosen);
+                },
+                icon: const Icon(Icons.share_outlined, size: AppSize.iconSmall),
+                label: const Text('共有'),
               ),
             TextButton.icon(
               onPressed: _delete,
@@ -231,9 +244,9 @@ class SearchScreen extends StatefulWidget {
   final List<CardSummary> cards;
   final Directory vault;
   final ValueChanged<CardSummary> onTap;
-  final Future<void> Function(List<CardSummary>)? onDelete;
+  final Future<void> Function(List<CardSummary>)? onDelete, onShare;
   const SearchScreen(
-      {super.key, required this.cards, required this.vault, required this.onTap, this.onDelete});
+      {super.key, required this.cards, required this.vault, required this.onTap, this.onDelete, this.onShare});
 
   @override
   State<SearchScreen> createState() => _SearchScreenState();
@@ -264,6 +277,7 @@ class _SearchScreenState extends State<SearchScreen> {
             vault: widget.vault,
             onTap: widget.onTap,
             onDelete: widget.onDelete,
+            onShare: widget.onShare,
             emptyText: widget.cards.isEmpty
                 ? 'まだ名刺がありません。撮影して保存すると検索できます'
                 : '「$_query」に合う名刺はありません',
@@ -282,7 +296,7 @@ class ListScreen extends StatefulWidget {
   /// Status filter; the shell owns it so the home screen can preset it.
   final StatusFilter filter;
   final ValueChanged<StatusFilter>? onFilter;
-  final Future<void> Function(List<CardSummary>)? onDelete;
+  final Future<void> Function(List<CardSummary>)? onDelete, onShare;
   const ListScreen({
     super.key,
     required this.cards,
@@ -291,6 +305,7 @@ class ListScreen extends StatefulWidget {
     this.filter = StatusFilter.all,
     this.onFilter,
     this.onDelete,
+    this.onShare,
   });
 
   @override
@@ -346,6 +361,7 @@ class _ListScreenState extends State<ListScreen> {
             vault: widget.vault,
             onTap: widget.onTap,
             onDelete: widget.onDelete,
+            onShare: widget.onShare,
             emptyText: widget.cards.isEmpty
                 ? 'まだ名刺がありません。撮影して保存すると、ここに並びます'
                 : switch (_filter) {

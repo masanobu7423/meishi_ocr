@@ -41,3 +41,10 @@ String vcardOfNotes(Map<String, String> notes) {
   }
   return contacts.isEmpty ? '' : FlutterContacts.vCard.exportAll(contacts);
 }
+
+/// vCard 3.0 text for these cards (one VCARD each), for sharing.
+String vcardOfFields(List<CardFields> cards, {DateTime? scannedAt}) => cards.isEmpty
+    ? ''
+    : FlutterContacts.vCard.exportAll([
+        for (final c in cards) toContact(c, scannedAt: scannedAt ?? DateTime.now()),
+      ]);

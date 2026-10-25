@@ -87,6 +87,25 @@ void main() {
     expect(find.byType(Checkbox), findsNothing);
   });
 
+  testWidgets('the selection bar offers 共有 when onShare is given', (t) async {
+    List<String>? shared;
+    await t.pumpWidget(app(CardList(
+      cards: _cards,
+      vault: Directory.systemTemp,
+      onTap: (_) {},
+      onDelete: (_) async {},
+      onShare: (cs) async => shared = cs.map((c) => c.stem).toList(),
+    )));
+    await t.longPress(find.text('山田 太郎'));
+    await t.pump();
+    await t.tap(find.text('鈴木 一郎'));
+    await t.pump();
+    await t.tap(find.text('共有'));
+    await t.pump();
+    expect(shared, ['k01', 'k02']);
+    expect(find.byType(Checkbox), findsNothing, reason: 'sharing ends the selection');
+  });
+
   testWidgets('without onDelete a long-press does nothing', (t) async {
     await t.pumpWidget(app(CardList(cards: _cards, vault: Directory.systemTemp, onTap: (_) {})));
     await t.longPress(find.text('山田 太郎'));
