@@ -2,10 +2,21 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 
+import 'ocr/card_status.dart';
 import 'ocr/history.dart';
 import 'theme.dart';
 
 enum CardSort { date, company, name }
+
+/// What the list shows: everything, only burst captures nobody has looked
+/// at yet, or everything not yet in the address book.
+enum StatusFilter { all, unreviewed, unregistered }
+
+List<CardSummary> filterCards(List<CardSummary> cards, StatusFilter f) => switch (f) {
+      StatusFilter.all => cards,
+      StatusFilter.unreviewed => cards.where((c) => c.status == CardStatus.unreviewed).toList(),
+      StatusFilter.unregistered => cards.where((c) => c.status != CardStatus.registered).toList(),
+    };
 
 /// Pure ordering used by the list screen.
 List<CardSummary> sortCards(List<CardSummary> cards, CardSort sort) {
@@ -30,12 +41,15 @@ class CardList extends StatelessWidget {
   final Directory vault;
   final ValueChanged<CardSummary> onTap;
   final String emptyText;
+  /// Show 未確認 / 未登録 under the date for cards that still need work.
+  final bool showStatus;
   const CardList({
     super.key,
     required this.cards,
     required this.vault,
     required this.onTap,
     this.emptyText = 'まだ名刺がありません。撮影して保存すると、ここに並びます',
+    this.showStatus = true,
   });
 
   @override
@@ -73,7 +87,19 @@ class CardList extends StatelessWidget {
             if (c.title != null) c.title!,
             if (c.memo != null) c.memo!,
           ].join('　')),
-          trailing: Text(c.scanned ?? '', style: text.labelSmall),
+          trailing: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Text(c.scanned ?? '', style: text.labelSmall),
+              if (showStatus && c.status != CardStatus.registered)
+                Text(
+                  c.status == CardStatus.unreviewed ? '未確認' : '未登録',
+                  style: text.labelSmall?.copyWith(
+                      color: c.status == CardStatus.unreviewed ? scheme.error : scheme.tertiary),
+                ),
+            ],
+          ),
           onTap: () => onTap(c),
         );
       },
@@ -131,7 +157,17 @@ class ListScreen extends StatefulWidget {
   final List<CardSummary> cards;
   final Directory vault;
   final ValueChanged<CardSummary> onTap;
-  const ListScreen({super.key, required this.cards, required this.vault, required this.onTap});
+  /// Status filter; the shell owns it so the home screen can preset it.
+  final StatusFilter filter;
+  final ValueChanged<StatusFilter>? onFilter;
+  const ListScreen({
+    super.key,
+    required this.cards,
+    required this.vault,
+    required this.onTap,
+    this.filter = StatusFilter.all,
+    this.onFilter,
+  });
 
   @override
   State<ListScreen> createState() => _ListScreenState();
@@ -139,11 +175,34 @@ class ListScreen extends StatefulWidget {
 
 class _ListScreenState extends State<ListScreen> {
   CardSort _sort = CardSort.date;
+  late StatusFilter _filter = widget.filter;
+
+  @override
+  void didUpdateWidget(ListScreen old) {
+    super.didUpdateWidget(old);
+    if (old.filter != widget.filter) _filter = widget.filter;
+  }
 
   @override
   Widget build(BuildContext context) {
+    final shown = filterCards(widget.cards, _filter);
     return Column(
       children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(AppSpace.unit, AppSpace.unit, AppSpace.unit, 0),
+          child: SegmentedButton<StatusFilter>(
+            segments: const [
+              ButtonSegment(value: StatusFilter.all, label: Text('すべて')),
+              ButtonSegment(value: StatusFilter.unreviewed, label: Text('未確認')),
+              ButtonSegment(value: StatusFilter.unregistered, label: Text('未登録')),
+            ],
+            selected: {_filter},
+            onSelectionChanged: (s) {
+              setState(() => _filter = s.first);
+              widget.onFilter?.call(s.first);
+            },
+          ),
+        ),
         Padding(
           padding: const EdgeInsets.all(AppSpace.unit),
           child: SegmentedButton<CardSort>(
@@ -157,7 +216,16 @@ class _ListScreenState extends State<ListScreen> {
           ),
         ),
         Expanded(
-          child: CardList(cards: sortCards(widget.cards, _sort), vault: widget.vault, onTap: widget.onTap),
+          child: CardList(
+            cards: sortCards(shown, _sort),
+            vault: widget.vault,
+            onTap: widget.onTap,
+            emptyText: widget.cards.isEmpty
+                ? 'まだ名刺がありません。撮影して保存すると、ここに並びます'
+                : _filter == StatusFilter.unreviewed
+                    ? '未確認の名刺はありません'
+                    : '未登録の名刺はありません',
+          ),
         ),
       ],
     );

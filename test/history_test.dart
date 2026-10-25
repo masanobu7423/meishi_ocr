@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:meishi_ocr/ocr/card_status.dart';
 import 'package:meishi_ocr/ocr/history.dart';
 
 const _a = '''---
@@ -64,6 +65,21 @@ void main() {
     expect(s.where((c) => c.matches('９８７６')).length, 1, reason: 'mobile, full-width digits');
     expect(s.where((c) => c.matches('sunrise.co')).length, 1, reason: 'email');
     expect(s.where((c) => c.matches('5432')).first.name, '山田 太郎');
+  });
+
+  test('status comes from the frontmatter; notes without one are reviewed', () {
+    const u = '''---
+type: meishi
+name: 未確認 太郎
+status: 未確認
+scanned: 2026-10-26
+source: k09.json
+tags: [名刺]
+---
+''';
+    final s = cardSummaries({'a': _a, 'u': u});
+    expect(s.firstWhere((c) => c.stem == 'k09').status, CardStatus.unreviewed);
+    expect(s.firstWhere((c) => c.stem == 'k01').status, CardStatus.reviewed);
   });
 
   test('matches searches 区分 and 関係者; suggestionsFrom ranks values by use', () {

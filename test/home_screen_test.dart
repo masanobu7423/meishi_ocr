@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:meishi_ocr/home_screen.dart';
+import 'package:meishi_ocr/ocr/card_status.dart';
 import 'package:meishi_ocr/ocr/history.dart';
 import 'package:meishi_ocr/theme.dart';
 
@@ -33,6 +34,25 @@ void main() {
     await t.tap(find.text('名前6'));
     await t.tap(find.text('すべて見る'));
     expect(taps, ['scan', 'open k6', 'all']);
+  });
+
+  testWidgets('home counts cards still to review or register and offers to continue', (t) async {
+    final taps = <String>[];
+    final mixed = [
+      const CardSummary(noteStem: 'u', stem: 'u1', name: 'A', status: CardStatus.unreviewed, scanned: '2026-10-26'),
+      const CardSummary(noteStem: 'r', stem: 'r1', name: 'B', status: CardStatus.reviewed, scanned: '2026-10-25'),
+      const CardSummary(noteStem: 'g', stem: 'g1', name: 'C', status: CardStatus.registered, scanned: '2026-10-24'),
+    ];
+    await t.pumpWidget(app(HomeScreen(
+      cards: mixed, vault: Directory.systemTemp, today: DateTime(2026, 10, 26),
+      onScan: () {}, onAlbum: () {}, onImport: () {}, onOpenCard: (_) {}, onSeeAll: () {},
+      onContinue: (f) => taps.add(f.name),
+    )));
+    expect(find.text('未確認'), findsOneWidget);
+    expect(find.text('未登録'), findsOneWidget);
+    await t.tap(find.text('未確認'));
+    await t.tap(find.text('未登録'));
+    expect(taps, ['unreviewed', 'unregistered']);
   });
 
   testWidgets('home with no cards explains what to do', (t) async {

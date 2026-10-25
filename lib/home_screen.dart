@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 
 import 'card_list.dart';
+import 'ocr/card_status.dart';
 import 'ocr/history.dart';
 import 'theme.dart';
 
@@ -18,6 +19,8 @@ class HomeScreen extends StatelessWidget {
   /// Where registrations go, e.g. "taro@gmail.com（Google）"; null = unknown.
   final String? accountLabel;
   final VoidCallback? onChangeAccount;
+  /// Opens the list filtered to what still needs work (未確認 / 未登録).
+  final ValueChanged<StatusFilter>? onContinue;
 
   const HomeScreen({
     super.key,
@@ -31,6 +34,7 @@ class HomeScreen extends StatelessWidget {
     required this.onSeeAll,
     this.accountLabel,
     this.onChangeAccount,
+    this.onContinue,
   });
 
   @override
@@ -55,6 +59,34 @@ class HomeScreen extends StatelessWidget {
             ),
           ],
         ),
+        if (onContinue != null) ...[
+          const SizedBox(height: AppSpace.unit),
+          Row(
+            children: [
+              Expanded(
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(AppRadius.medium),
+                  onTap: () => onContinue!(StatusFilter.unreviewed),
+                  child: _Stat(
+                      label: '未確認',
+                      value: '${cards.where((c) => c.status == CardStatus.unreviewed).length}',
+                      unit: '枚'),
+                ),
+              ),
+              const SizedBox(width: AppSpace.unit),
+              Expanded(
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(AppRadius.medium),
+                  onTap: () => onContinue!(StatusFilter.unregistered),
+                  child: _Stat(
+                      label: '未登録',
+                      value: '${cards.where((c) => c.status != CardStatus.registered).length}',
+                      unit: '枚'),
+                ),
+              ),
+            ],
+          ),
+        ],
         const SizedBox(height: AppSpace.gutter),
         FilledButton.icon(
           onPressed: onScan,
@@ -107,7 +139,7 @@ class HomeScreen extends StatelessWidget {
           ),
           SizedBox(
             height: recent.length * 72.0 + 8,
-            child: CardList(cards: recent, vault: vault, onTap: onOpenCard),
+            child: CardList(cards: recent, vault: vault, onTap: onOpenCard, showStatus: false),
           ),
         ],
       ],

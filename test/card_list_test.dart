@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:meishi_ocr/card_list.dart';
+import 'package:meishi_ocr/ocr/card_status.dart';
 import 'package:meishi_ocr/ocr/history.dart';
 import 'package:meishi_ocr/theme.dart';
 
@@ -22,7 +23,38 @@ void main() {
     });
   });
 
+  final mixed = [
+    const CardSummary(noteStem: 'u', stem: 'u1', name: '未確認 一郎', status: CardStatus.unreviewed, scanned: '2026-10-26'),
+    const CardSummary(noteStem: 'r', stem: 'r1', name: '確認 二郎', status: CardStatus.reviewed, scanned: '2026-10-25'),
+    const CardSummary(noteStem: 'g', stem: 'g1', name: '登録 三郎', status: CardStatus.registered, scanned: '2026-10-24'),
+  ];
+
+  test('filterCards: all / unreviewed / not yet registered', () {
+    expect(filterCards(mixed, StatusFilter.all).map((c) => c.stem), ['u1', 'r1', 'g1']);
+    expect(filterCards(mixed, StatusFilter.unreviewed).map((c) => c.stem), ['u1']);
+    expect(filterCards(mixed, StatusFilter.unregistered).map((c) => c.stem), ['u1', 'r1']);
+  });
+
   Widget app(Widget child) => MaterialApp(theme: appTheme(), home: Scaffold(body: child));
+
+  testWidgets('CardList shows the status of cards that still need work', (t) async {
+    await t.pumpWidget(app(CardList(cards: mixed, vault: Directory.systemTemp, onTap: (_) {})));
+    expect(find.text('未確認'), findsOneWidget);
+    expect(find.text('未登録'), findsOneWidget);
+    expect(find.text('登録済'), findsNothing, reason: 'done cards stay quiet');
+  });
+
+  testWidgets('ListScreen filter chips narrow the list', (t) async {
+    StatusFilter? chosen;
+    await t.pumpWidget(app(ListScreen(
+      cards: mixed, vault: Directory.systemTemp, onTap: (_) {},
+      filter: StatusFilter.unreviewed, onFilter: (f) => chosen = f,
+    )));
+    expect(find.text('未確認 一郎'), findsOneWidget);
+    expect(find.text('確認 二郎'), findsNothing);
+    await t.tap(find.text('未登録'));
+    expect(chosen, StatusFilter.unregistered);
+  });
 
   testWidgets('CardList shows every card and reports taps', (t) async {
     CardSummary? tapped;

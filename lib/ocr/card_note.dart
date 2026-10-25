@@ -1,4 +1,5 @@
 import 'address.dart';
+import 'card_status.dart';
 import 'extractor.dart';
 import 'vault_index.dart' show splitNames;
 
@@ -45,7 +46,8 @@ String cardNoteMarkdown(CardFields f,
     {required DateTime scannedAt,
     bool vertical = false,
     String? source,
-    Map<String, String> images = const {}}) {
+    Map<String, String> images = const {},
+    CardStatus status = CardStatus.reviewed}) {
   final addr = splitAddress(f.address);
   final pref = addr.pref;
   final city = addr.city;
@@ -108,6 +110,7 @@ String cardNoteMarkdown(CardFields f,
     ..write(fm('related', f.related))
     ..write('scanned: ${_ymd(scannedAt)}\n')
     ..write('vertical: $vertical\n')
+    ..write('status: ${status.label}\n')
     ..write(fm('source', source))
     ..write(fm('image_front', images['front']))
     ..write(fm('image_back', images['back']))

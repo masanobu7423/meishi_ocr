@@ -41,6 +41,12 @@ void main() {
     expect(q.current, isNull);
   });
 
+  test('pairPages pairs front/back in order; an odd last page has no back', () {
+    expect(pairPages(['a', 'b', 'c'], paired: true), [(front: 'a', back: 'b'), (front: 'c', back: null)]);
+    expect(pairPages(['a', 'b'], paired: false), [(front: 'a', back: null), (front: 'b', back: null)]);
+    expect(pairPages(<String>[], paired: true), isEmpty);
+  });
+
   test('shotStems names a burst of captures uniquely and file-safely', () {
     final stems = shotStems(DateTime(2026, 10, 25, 18, 12, 7, 42), 3);
     expect(stems,

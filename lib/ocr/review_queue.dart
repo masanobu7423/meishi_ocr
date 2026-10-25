@@ -8,6 +8,16 @@ List<String> shotStems(DateTime now, int count) {
   return [for (var i = 1; i <= count; i++) 'shot_${t}_$i'];
 }
 
+/// Pages from one burst grouped into cards: alternating front / back when
+/// [paired], else every page is a front. An odd trailing page has no back.
+List<({T front, T? back})> pairPages<T>(List<T> pages, {required bool paired}) => [
+      if (paired)
+        for (var i = 0; i < pages.length; i += 2)
+          (front: pages[i], back: i + 1 < pages.length ? pages[i + 1] : null)
+      else
+        for (final p in pages) (front: p, back: null),
+    ];
+
 /// Cursor over a batch of imported cards for the review screen.
 class ReviewQueue<T> {
   final List<T> items;

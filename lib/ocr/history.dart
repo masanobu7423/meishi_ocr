@@ -1,3 +1,4 @@
+import 'card_status.dart';
 import 'extractor.dart';
 import 'vault_index.dart';
 
@@ -10,6 +11,7 @@ class CardSummary {
   final String? company, title, memo, imageFront, imageBack, scanned;
   final String? kana, phone, mobile, email;
   final String? category, related, division, qualifications;
+  final CardStatus status;
 
   const CardSummary({
     required this.noteStem,
@@ -29,6 +31,7 @@ class CardSummary {
     this.related,
     this.division,
     this.qualifications,
+    this.status = CardStatus.reviewed,
   });
 
   String get _haystack => _fold([
@@ -64,6 +67,7 @@ List<CardSummary> cardSummaries(Map<String, String> notes) {
       related: fm['related'],
       division: fm['division'],
       qualifications: fm['qualifications'],
+      status: parseStatus(fm['status']),
     ));
   }
   out.sort((a, b) => (b.scanned ?? '').compareTo(a.scanned ?? ''));

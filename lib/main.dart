@@ -12,6 +12,7 @@ import 'capture_screen.dart';
 import 'card_form.dart';
 import 'duplicate_screen.dart';
 import 'ocr/actions.dart';
+import 'ocr/card_status.dart';
 import 'ocr/card_store.dart';
 import 'ocr/contact_mapper.dart';
 import 'ocr/extractor.dart';
@@ -36,7 +37,6 @@ void main() => runApp(MaterialApp(
     ));
 
 /// One imported card waiting for review.
-typedef QueuedCard = ({String stem, List<OcrLine> front, String imagePath});
 
 class ScanPage extends StatefulWidget {
   final Future<(CardStore, OcrPipeline)> ready;
@@ -63,13 +63,16 @@ class ScanPage extends StatefulWidget {
 class ScanPageState extends State<ScanPage> {
   final _picker = ImagePicker();
   final _ctl = {for (final k in CardFields.keys) k: TextEditingController()};
-  final _queue = ReviewQueue<QueuedCard>();
+  /// Stems of the batch being reviewed; each card is read back from the
+  /// store when shown, so edits saved earlier are never lost.
+  final _queue = ReviewQueue<String>();
 
   List<OcrLine>? _front, _back;
   String? _frontPath, _backPath;
   Learned? _learned;
   CardFields? _fields;
   String? _source;
+  CardStatus? _status; // of the stored card on screen; null = not saved yet
   String? _progress; // non-null while OCR runs
   String? _error; // what happened + what to do
 
@@ -161,10 +164,49 @@ class ScanPageState extends State<ScanPage> {
   Future<void> shootMany() async {
     final (_, ocr, _) = await _ready;
     if (ocr.busy) return;
-    final paths = await _captureMany();
-    if (paths.isEmpty) return;
-    final stems = shotStems(DateTime.now(), paths.length);
-    await _importFiles([for (final p in paths) File(p)], stems: stems);
+    final paired = await showDialog<bool>(
+      context: context,
+      builder: (c) => SimpleDialog(
+        title: const Text('続けて撮影'),
+        children: [
+          SimpleDialogOption(
+            onPressed: () => Navigator.pop(c, false),
+            child: const ListTile(
+              leading: Icon(Icons.crop_portrait),
+              title: Text('表だけ'),
+              subtitle: Text('1 枚ごとに表面を撮ります'),
+            ),
+          ),
+          SimpleDialogOption(
+            onPressed: () => Navigator.pop(c, true),
+            child: const ListTile(
+              leading: Icon(Icons.flip),
+              title: Text('表と裏を交互に'),
+              subtitle: Text('表、裏、表、裏…の順に撮ります。裏がない名刺は表を 2 回'),
+            ),
+          ),
+        ],
+      ),
+    );
+    if (paired == null) return;
+    // Shooting only: each scanner session is saved as 未確認 and the scanner
+    // opens again, until the user closes it. Review happens later from the
+    // list, so the form never takes over mid-burst.
+    var saved = 0, skipped = 0;
+    while (mounted) {
+      final paths = await _captureMany();
+      if (paths.isEmpty) break;
+      final files = [for (final p in paths) File(p)];
+      final stems = shotStems(DateTime.now(), pairPages(files, paired: paired).length);
+      final (s, k) = await _importFiles(files, stems: stems, paired: paired, review: false);
+      saved += s;
+      skipped += k;
+    }
+    if (!mounted || saved + skipped == 0) return;
+    final unread = skipped == 0 ? '' : '。$skipped 枚は文字を読み取れませんでした';
+    _toast(saved == 0
+        ? '読み取れた名刺がありません$unread'
+        : '$saved 枚を未確認として保存しました$unread。一覧の「未確認」から 1 枚ずつ確認して登録できます');
   }
 
   /// Camera or album for the front (true) or back side.
@@ -188,6 +230,7 @@ class ScanPageState extends State<ScanPage> {
         _back = null;
         _backPath = null;
         _source = null; // a new card, not the queued one
+        _status = null;
         _queue.clear(); // leaving the batch; its label and auto-advance no longer apply
       } else {
         _back = r.lines;
@@ -202,21 +245,24 @@ class ScanPageState extends State<ScanPage> {
 
   /// A saved card chosen on the home / search / list tab: show it with its
   /// saved values (not a fresh extraction) and images.
-  Future<void> loadStoredCard(CardSummary picked) async {
+  Future<void> loadStoredCard(CardSummary picked) => _showStoredCard(picked.stem, name: picked.name);
+
+  Future<void> _showStoredCard(String stem, {String? name, bool keepQueue = false}) async {
     final (store, _, _) = await _ready;
-    final card = await store.loadCard(picked.stem);
+    final card = await store.loadCard(stem);
     if (!mounted) return;
     if (card == null) {
-      setState(() => _error = '「${picked.name}」の読み取りデータが見つかりません。ノートは残っています');
+      setState(() => _error = '「${name ?? stem}」の読み取りデータが見つかりません。ノートは残っています');
       return;
     }
     setState(() {
-      _queue.clear();
+      if (!keepQueue) _queue.clear();
       _front = card.front;
       _back = card.back.isEmpty ? null : card.back;
       _frontPath = card.frontImage?.path;
       _backPath = card.backImage?.path;
       _source = '${card.stem}.json';
+      _status = card.status;
       _error = null;
       _fields = fieldsFromJson(card.expected);
       for (final k in CardFields.keys) {
@@ -229,20 +275,26 @@ class ScanPageState extends State<ScanPage> {
 
   /// Save the reviewed fields; whatever the user changed against the
   /// extractor's guess is learned for the next card and logged.
-  Future<void> _saveReviewed({bool quiet = false}) async {
+  Future<void> _saveReviewed({bool quiet = false, CardStatus? status}) async {
     final (store, _, learned) = await _ready;
     final stem = _source?.replaceAll('.json', '') ??
         DateTime.now().toIso8601String().replaceAll(RegExp(r'[:.]'), '-');
     final guess = _fields?.toJson() ?? const <String, String?>{};
     final corrected = _reviewed();
+    // Saving from the form means the card was looked at; a registered card
+    // stays registered when edited again.
+    final st = status ?? (_status == CardStatus.registered ? CardStatus.registered : CardStatus.reviewed);
     final f = await store.saveCard(
         stem: stem,
         front: _front!,
         back: _back ?? const [],
         expected: corrected,
         frontImage: _frontPath == null ? null : File(_frontPath!),
-        backImage: _backPath == null ? null : File(_backPath!));
+        backImage: _backPath == null ? null : File(_backPath!),
+        status: st);
     _source = f.uri.pathSegments.last;
+    _status = st;
+    _fields = fieldsFromJson(corrected); // the saved values are the new baseline
     final before = jsonEncode(learned.toJson());
     learned.learn(guess: guess, corrected: corrected, lines: [..._front!, ...?_back]);
     final learnedSomething = jsonEncode(learned.toJson()) != before;
@@ -250,6 +302,17 @@ class ScanPageState extends State<ScanPage> {
     await store.appendCorrection(stem, guess, corrected);
     widget.onSaved();
     if (!quiet && mounted) _toast('保存しました${learnedSomething ? "。修正を次回から反映します" : ""}');
+  }
+
+  /// The card on screen is now in the address book: status only, no
+  /// re-learning (the corrections were learned when it was saved).
+  Future<void> _markRegistered() async {
+    final stem = _source?.replaceAll('.json', '');
+    if (stem == null) return;
+    final (store, _, _) = await _ready;
+    await store.setStatus(stem, CardStatus.registered);
+    _status = CardStatus.registered;
+    widget.onSaved();
   }
 
   /// Delete the stored card (JSON, note, photos) after confirmation. The
@@ -278,6 +341,7 @@ class ScanPageState extends State<ScanPage> {
       _front = _back = null;
       _frontPath = _backPath = null;
       _source = null;
+      _status = null;
       _fields = null;
       _error = null;
       for (final c in _ctl.values) {
@@ -311,13 +375,17 @@ class ScanPageState extends State<ScanPage> {
       await _saveReviewed(quiet: true);
       await FlutterContacts.create(toContact(fields, scannedAt: DateTime.now(), source: _source),
           account: await widget.account());
+      await _markRegistered();
       if (!mounted) return;
       _toast('電話帳に登録しました');
     }
     if (!mounted) return;
     setState(() => _error = null);
-    // Batch review: move on to the next card by itself.
-    if (_queue.current != null && _queue.next()) setState(_showQueued);
+    // Batch review: a registered card leaves the queue; show the next one.
+    if (_queue.current != null) {
+      _queue.removeCurrent();
+      if (_queue.current != null) await _showQueued();
+    }
   }
 
   /// Returns true when something was written (merge / separate / replace).
@@ -338,6 +406,8 @@ class ScanPageState extends State<ScanPage> {
         final merged = mergeContact(full, fields,
             useCard: decision.useCard, keepExisting: decision.keepExisting, scannedAt: now);
         await FlutterContacts.update(merged);
+        await _markRegistered();
+        final stem = _source?.replaceAll('.json', '');
         if (!mounted) return true;
         final changed = decision.useCard.length;
         // Undo = write the pre-merge snapshot back; it is still in memory.
@@ -348,7 +418,13 @@ class ScanPageState extends State<ScanPage> {
             label: '元に戻す',
             onPressed: () async {
               await FlutterContacts.update(full);
-              if (mounted) _toast('統合前の内容に戻しました');
+              final (store, _, _) = await _ready;
+              if (stem != null) await store.setStatus(stem, CardStatus.reviewed);
+              if (mounted) {
+                setState(() => _status = CardStatus.reviewed);
+                widget.onSaved();
+                _toast('統合前の内容に戻しました');
+              }
             },
           ),
         ));
@@ -357,6 +433,7 @@ class ScanPageState extends State<ScanPage> {
         await _saveReviewed(quiet: true);
         await FlutterContacts.create(toContact(fields, scannedAt: now, source: _source),
             account: await widget.account());
+        await _markRegistered();
         if (mounted) _toast('別の連絡先として登録しました');
         return true;
       case DuplicateAction.replace:
@@ -364,6 +441,7 @@ class ScanPageState extends State<ScanPage> {
         await FlutterContacts.delete(id);
         await FlutterContacts.create(toContact(fields, scannedAt: now, source: _source),
             account: await widget.account());
+        await _markRegistered();
         if (mounted) _toast('既存の連絡先を削除し、名刺の内容で登録しました');
         return true;
       case DuplicateAction.editExisting:
@@ -388,61 +466,64 @@ class ScanPageState extends State<ScanPage> {
     await _importFiles(files);
   }
 
-  /// OCR every file as a front side, save it with the extractor's guess and
-  /// queue it for review. [stems] default to the file names.
-  Future<void> _importFiles(List<File> files, {List<String>? stems}) async {
-    final (store, ocr, _) = await _ready;
-    _queue.clear();
-    var levelled = 0, skipped = 0;
-    for (final (i, f) in files.indexed) {
+  /// OCR every file (front, or front+back pairs when [paired]), save each
+  /// card as 未確認 with the extractor's guess, and queue it for review now
+  /// or later from the list. [stems] default to the file names.
+  /// Returns (saved, unreadable). With [review] the batch is queued and the
+  /// first card shown; without it the screen is left as it is so the user
+  /// can keep shooting and review later from the list.
+  Future<(int, int)> _importFiles(List<File> files,
+      {List<String>? stems, bool paired = false, bool review = true}) async {
+    final (store, ocr, learned) = await _ready;
+    if (review) _queue.clear();
+    var saved = 0, levelled = 0, skipped = 0;
+    final pairs = pairPages(files, paired: paired);
+    for (final (i, p) in pairs.indexed) {
+      final f = p.front;
       final stem = stems?[i] ?? f.uri.pathSegments.last.replaceAll(RegExp(r'\.\w+$'), '');
-      setState(() => _progress = '読み取り中 ${i + 1}/${files.length}');
+      setState(() => _progress = '読み取り中 ${i + 1}/${pairs.length}');
       final r = await ocr.recognize(f.path, front: true);
       if (r.lines.isEmpty) {
         skipped++;
         continue;
       }
       if (r.deskewedBy != null) levelled++;
-      _front = r.lines;
-      _back = null;
-      _refill();
+      final back = p.back == null ? null : await ocr.recognize(p.back!.path, front: false);
+      final guess = extract(r.lines, back: back?.lines ?? const [], learned: learned);
       await store.saveCard(
           stem: stem,
           front: r.lines,
           frontRaw: r.rawLines,
-          back: const [],
-          expected: _fields!.toJson(),
-          frontImage: f);
-      // Queue the vault copy, not the scanner's temp file: the OS may clean
-      // the cache before the user gets to this card.
-      final saved = await store.loadCard(stem);
-      _queue.items.add((stem: stem, front: r.lines, imagePath: saved?.frontImage?.path ?? f.path));
+          back: back?.lines ?? const [],
+          expected: guess.toJson(),
+          frontImage: f,
+          backImage: p.back,
+          status: CardStatus.unreviewed);
+      saved++;
+      if (review) _queue.items.add(stem);
     }
-    _showQueued();
-    setState(() => _progress = null);
+    if (review) await _showQueued();
+    if (mounted) setState(() => _progress = null);
     widget.onSaved();
-    final n = _queue.items.length;
-    final unread = skipped == 0 ? '' : '。$skipped 枚は文字を読み取れませんでした。撮り直してください';
-    _toast(n == 0
-        ? '読み取れた名刺がありません$unread'
-        : '$n 枚を取り込みました${levelled == 0 ? "" : "（$levelled 枚は傾きを補正）"}$unread。'
-            '1 枚ずつ確認して登録してください');
+    if (review) {
+      final unread = skipped == 0 ? '' : '。$skipped 枚は文字を読み取れませんでした。撮り直してください';
+      _toast(saved == 0
+          ? '読み取れた名刺がありません$unread'
+          : '$saved 枚を取り込みました${levelled == 0 ? "" : "（$levelled 枚は傾きを補正）"}$unread。'
+              '1 枚ずつ確認して登録してください。あとで一覧の「未確認」からも続けられます');
+    }
+    return (saved, skipped);
   }
 
-  void _showQueued() {
-    final c = _queue.current;
-    if (c == null) return;
-    _front = c.front;
-    _frontPath = c.imagePath;
-    _back = null;
-    _backPath = null;
-    _source = '${c.stem}.json';
-    _error = null;
-    _refill();
+  /// Show the queue's current card from the store (saved values and
+  /// status), keeping the queue for the arrows.
+  Future<void> _showQueued() async {
+    final stem = _queue.current;
+    if (stem != null) await _showStoredCard(stem, keepQueue: true);
   }
 
-  void _move(bool forward) {
-    if (forward ? _queue.next() : _queue.prev()) setState(_showQueued);
+  Future<void> _move(bool forward) async {
+    if (forward ? _queue.next() : _queue.prev()) await _showQueued();
   }
 
   /// Phone / mail / web / map: hand the URI to the matching app.

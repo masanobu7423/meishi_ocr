@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:archive/archive.dart';
 
 import 'card_note.dart';
+import 'card_status.dart';
 import 'extractor.dart';
 import 'learned.dart';
 import 'ocr_line.dart';
@@ -48,6 +49,7 @@ class CardStore {
     File? frontImage,
     File? backImage,
     DateTime? scannedAt,
+    CardStatus status = CardStatus.reviewed,
   }) async {
     final vertical = isVertical(front);
     final vault = await _dir('vault').create(recursive: true);
@@ -65,7 +67,10 @@ class CardStore {
       final ext = img.path.split('.').last.toLowerCase();
       final rel = 'images/${stem}_$side.$ext';
       await Directory('${vault.path}/images').create(recursive: true);
-      await img.copy('${vault.path}/$rel');
+      final dest = File('${vault.path}/$rel');
+      // Re-saving a stored card passes the vault copy itself as the source;
+      // copying a file onto itself truncates it on Linux/Android.
+      if (!_samePath(img, dest)) await img.copy(dest.path);
       images[side] = rel;
     }
     final golden = await _dir('golden').create(recursive: true);
@@ -73,6 +78,7 @@ class CardStore {
     await file.writeAsString(const JsonEncoder.withIndent(' ').convert({
       'strict': false,
       'vertical': vertical,
+      'status': status.name,
       if (images.isNotEmpty) 'images': images,
       'front': front.map((l) => l.toJson()).toList(),
       if (frontRaw != null) 'frontRaw': frontRaw.map((l) => l.toJson()).toList(),
@@ -81,14 +87,35 @@ class CardStore {
     }));
     final fields = fieldsFromJson(expected);
     final note = File('${vault.path}/${cardNoteFilename(fields, now)}');
-    await note.writeAsString(cardNoteMarkdown(
-        fields, scannedAt: now, vertical: vertical, source: '$stem.json', images: images));
+    await note.writeAsString(cardNoteMarkdown(fields,
+        scannedAt: now, vertical: vertical, source: '$stem.json', images: images, status: status));
     for (final (f, _) in olds) {
       // Same folder, so compare names: listSync and our path differ in separators on Windows.
       if (f.uri.pathSegments.last != note.uri.pathSegments.last) await f.delete();
     }
     await _writeIndex(vault);
     return file;
+  }
+
+  static bool _samePath(File a, File b) =>
+      a.absolute.path.replaceAll('\\', '/') == b.absolute.path.replaceAll('\\', '/');
+
+  /// Changes only the status of a stored card (its data, images and scan
+  /// date stay). False when nothing is stored under [stem].
+  Future<bool> setStatus(String stem, CardStatus status) async {
+    final c = await loadCard(stem);
+    if (c == null) return false;
+    await saveCard(
+      stem: stem,
+      front: c.front,
+      frontRaw: c.frontRaw,
+      back: c.back,
+      expected: c.expected,
+      frontImage: c.frontImage,
+      backImage: c.backImage,
+      status: status,
+    );
+    return true;
   }
 
   /// A stem names one file inside golden/; anything that could leave the
@@ -214,10 +241,12 @@ class CardStore {
     return StoredCard(
       stem: stem,
       front: lines('front'),
+      frontRaw: j['frontRaw'] == null ? null : lines('frontRaw'),
       back: lines('back'),
       expected: (j['expected'] as Map).cast<String, String?>(),
       frontImage: img('front'),
       backImage: img('back'),
+      status: parseStatus(j['status'] as String?),
     );
   }
 
@@ -307,15 +336,19 @@ class CardStore {
 class StoredCard {
   final String stem;
   final List<OcrLine> front, back;
+  final List<OcrLine>? frontRaw;
   final Map<String, String?> expected;
   final File? frontImage, backImage;
+  final CardStatus status;
   const StoredCard({
     required this.stem,
     required this.front,
+    this.frontRaw,
     required this.back,
     required this.expected,
     this.frontImage,
     this.backImage,
+    this.status = CardStatus.reviewed,
   });
 }
 

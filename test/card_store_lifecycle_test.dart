@@ -4,6 +4,7 @@ import 'dart:io';
 
 import 'package:archive/archive.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:meishi_ocr/ocr/card_status.dart';
 import 'package:meishi_ocr/ocr/card_store.dart';
 import 'package:meishi_ocr/ocr/ocr_line.dart';
 
@@ -24,6 +25,8 @@ void main() {
   Future<void> save(String stem, Map<String, String?> expected, {File? image, DateTime? at}) =>
       store.saveCard(
           stem: stem, front: front, back: const [], expected: expected, frontImage: image, scannedAt: at);
+  Future<File> saveAs(String stem, CardStatus status, {DateTime? at}) =>
+      store.saveCard(stem: stem, front: front, back: const [], expected: yamada, status: status, scannedAt: at);
 
   test('saving the same stem again replaces its note and keeps the scan date', () async {
     await save('c1', yamada, at: oct25);
@@ -111,6 +114,35 @@ void main() {
     expect(await store.restore(zip), (1, 1));
     expect(File('${tmp.path}/golden/ok.json').existsSync(), isTrue);
     expect(await File('${tmp.path}/log/errors.txt').readAsString(), contains('vault/images/x.jpg'));
+  });
+
+  test('status is stored in the JSON and the note; default reviewed; legacy JSON reviewed', () async {
+    final f = await saveAs('c1', CardStatus.unreviewed, at: oct25);
+    expect(jsonDecode(await f.readAsString())['status'], 'unreviewed');
+    expect((await store.notes()).values.single, contains('status: 未確認\n'));
+    expect((await store.loadCard('c1'))!.status, CardStatus.unreviewed);
+
+    await save('c2', {'name': '佐藤 花子'}, at: oct25);
+    expect((await store.loadCard('c2'))!.status, CardStatus.reviewed);
+
+    await File('${tmp.path}/golden/old.json').writeAsString(jsonEncode({'expected': {'name': 'x'}}));
+    expect((await store.loadCard('old'))!.status, CardStatus.reviewed);
+  });
+
+  test('setStatus changes only the status; a re-save from the vault image keeps its bytes', () async {
+    final img = await File('${tmp.path}/f.jpg').writeAsBytes([1, 2, 3]);
+    await save('c1', yamada, image: img, at: oct25);
+    expect(await store.setStatus('c1', CardStatus.registered), isTrue);
+    final c = (await store.loadCard('c1'))!;
+    expect(c.status, CardStatus.registered);
+    expect(c.expected['name'], '山田 太郎');
+    expect(await c.frontImage!.readAsBytes(), [1, 2, 3]);
+    expect((await store.notes()).values.single, contains('status: 登録済\nsource: c1.json'));
+    // The review screen re-saves with the vault copy as the source image:
+    // copying a file onto itself must not truncate it.
+    await store.saveCard(stem: 'c1', front: front, back: const [], expected: yamada, frontImage: c.frontImage);
+    expect(await (await store.loadCard('c1'))!.frontImage!.readAsBytes(), [1, 2, 3]);
+    expect(await store.setStatus('missing', CardStatus.registered), isFalse);
   });
 
   test('backups lists zip files newest first', () async {

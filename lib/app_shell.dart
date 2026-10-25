@@ -8,8 +8,10 @@ import 'package:path_provider/path_provider.dart';
 import 'card_list.dart';
 import 'home_screen.dart';
 import 'main.dart';
+import 'ocr/card_status.dart';
 import 'ocr/card_store.dart';
 import 'ocr/contact_mapper.dart';
+import 'ocr/extractor.dart' show CardFields;
 import 'ocr/history.dart';
 import 'ocr/ocr_pipeline.dart';
 import 'ocr/sync.dart';
@@ -45,6 +47,7 @@ class _HomeShellState extends State<HomeShell> {
   bool _accountResolved = false;
 
   Map<String, List<String>> _suggestions = const {};
+  StatusFilter _listFilter = StatusFilter.all;
 
   Future<List<CardSummary>> _load() async {
     final (store, _) = await _ready;
@@ -140,10 +143,14 @@ class _HomeShellState extends State<HomeShell> {
     }
     final account = await _resolveAccount();
     final (store, _) = await _ready;
-    final cards = [
-      for (final md in (await store.notes()).values)
-        if (parseFrontmatter(md)['type'] == 'meishi') fieldsFromFrontmatter(parseFrontmatter(md)),
-    ];
+    // Only cards someone has looked at: a burst capture is still a guess.
+    final stems = <CardFields, String>{};
+    for (final md in (await store.notes()).values) {
+      final fm = parseFrontmatter(md);
+      if (fm['type'] != 'meishi' || parseStatus(fm['status']) == CardStatus.unreviewed) continue;
+      stems[fieldsFromFrontmatter(fm)] = (fm['source'] ?? '').replaceAll(RegExp(r'\.json$'), '');
+    }
+    final cards = stems.keys.toList();
     final existing = await FlutterContacts.getAll(properties: {ContactProperty.phone, ContactProperty.email});
     final plan = syncPlan(cards, existing);
     final creates = plan.where((p) => p.action == SyncAction.create).toList();
@@ -165,8 +172,11 @@ class _HomeShellState extends State<HomeShell> {
     var done = 0;
     for (final p in creates) {
       await FlutterContacts.create(toContact(p.card, scannedAt: DateTime.now()), account: account);
+      final stem = stems[p.card];
+      if (stem != null && stem.isNotEmpty) await store.setStatus(stem, CardStatus.registered);
       done++;
     }
+    _reload();
     if (mounted) _toast('$done 件を電話帳に登録しました');
   }
 
@@ -310,6 +320,10 @@ class _HomeShellState extends State<HomeShell> {
                 },
                 onOpenCard: _open,
                 onSeeAll: () => _go(3),
+                onContinue: (f) {
+                  setState(() => _listFilter = f);
+                  _go(3);
+                },
               ),
               ScanPage(
                 key: _scanKey,
@@ -319,7 +333,13 @@ class _HomeShellState extends State<HomeShell> {
                 suggestions: _suggestions,
               ),
               SearchScreen(cards: cards, vault: store.vaultDir, onTap: _open),
-              ListScreen(cards: cards, vault: store.vaultDir, onTap: _open),
+              ListScreen(
+                cards: cards,
+                vault: store.vaultDir,
+                onTap: _open,
+                filter: _listFilter,
+                onFilter: (f) => setState(() => _listFilter = f),
+              ),
             ],
           );
         },
