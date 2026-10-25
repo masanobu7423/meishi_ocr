@@ -9,12 +9,14 @@ import 'package:path_provider/path_provider.dart';
 
 import 'capture_screen.dart';
 import 'card_form.dart';
+import 'duplicate_screen.dart';
 import 'history_screen.dart';
 import 'ocr/card_store.dart';
 import 'ocr/contact_mapper.dart';
 import 'ocr/extractor.dart';
 import 'ocr/history.dart';
 import 'ocr/learned.dart';
+import 'ocr/merge.dart';
 import 'ocr/ocr_line.dart';
 import 'ocr/ocr_pipeline.dart';
 import 'ocr/review_queue.dart';
@@ -193,27 +195,57 @@ class _ScanPageState extends State<ScanPage> {
     final existing = await FlutterContacts.getAll(
         properties: {ContactProperty.phone, ContactProperty.email});
     final dup = findDuplicate(fields, existing);
-    if (dup != null && mounted) {
-      final go = await showDialog<bool>(
-        context: context,
-        builder: (c) => AlertDialog(
-          title: const Text('同じ人がいるかもしれません'),
-          content: Text('既存の連絡先「${dup.displayName ?? ''}」と電話番号またはメールが一致します。'),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('中止')),
-            FilledButton(onPressed: () => Navigator.pop(c, true), child: const Text('別人として登録')),
-          ],
-        ),
-      );
-      if (go != true) return;
+    if (dup != null) {
+      final done = await _resolveDuplicate(dup.id!, fields);
+      if (!done) return;
+    } else {
+      await _saveReviewed(quiet: true);
+      await FlutterContacts.create(toContact(fields, scannedAt: DateTime.now(), source: _source));
+      if (!mounted) return;
+      _toast('電話帳に登録しました');
     }
-    await _saveReviewed(quiet: true);
-    await FlutterContacts.create(toContact(fields, scannedAt: DateTime.now(), source: _source));
     if (!mounted) return;
-    _toast('電話帳に登録しました');
     setState(() => _error = null);
     // Batch review: move on to the next card by itself.
     if (_queue.current != null && _queue.next()) setState(_showQueued);
+  }
+
+  /// Side-by-side review against the matching contact. Returns true when
+  /// something was written (merge / separate / replace), false otherwise.
+  Future<bool> _resolveDuplicate(String id, CardFields fields) async {
+    final full = await FlutterContacts.get(id, properties: ContactProperties.all);
+    if (full == null) return false;
+    if (!mounted) return false;
+    final decision = await Navigator.push<DuplicateDecision>(
+      context,
+      MaterialPageRoute(
+          builder: (_) => DuplicateScreen(existing: full, card: fields, rows: contactDiff(full, fields))),
+    );
+    if (decision == null) return false;
+    final now = DateTime.now();
+    switch (decision.action) {
+      case DuplicateAction.merge:
+        await _saveReviewed(quiet: true);
+        await FlutterContacts.update(
+            mergeContact(full, fields, useCard: decision.useCard, scannedAt: now));
+        if (mounted) _toast('既存の連絡先「${full.displayName ?? ''}」を更新しました');
+        return true;
+      case DuplicateAction.separate:
+        await _saveReviewed(quiet: true);
+        await FlutterContacts.create(toContact(fields, scannedAt: now, source: _source));
+        if (mounted) _toast('別の連絡先として登録しました');
+        return true;
+      case DuplicateAction.replace:
+        await _saveReviewed(quiet: true);
+        await FlutterContacts.delete(id);
+        await FlutterContacts.create(toContact(fields, scannedAt: now, source: _source));
+        if (mounted) _toast('既存の連絡先を削除し、名刺の内容で登録しました');
+        return true;
+      case DuplicateAction.editExisting:
+        await FlutterContacts.native.showEditor(id);
+        if (mounted) _toast('電話帳アプリでの編集を終えたら、もう一度「電話帳に登録」を押してください');
+        return false;
+    }
   }
 
   // ---- batch ---------------------------------------------------------------

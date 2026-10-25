@@ -35,7 +35,7 @@ TODO(owner): seed color は仮。ブランド色があれば差し替える。
 
 - Button roles → widget: primary = `FilledButton`（電話帳に登録）, secondary = `OutlinedButton` / `FilledButton.tonal`（保存、撮影）, destructive = なし（削除機能なし）
 - Every async view renders: loading（OCR 中はスピナーと「読み取り中…」、保存/登録ボタンは無効）, empty（撮影かアルバム選択への誘導）, error（何が起きたか + 次に何をするか、上部バナー）, success（SnackBar「電話帳に登録しました」）
-- Irreversible actions: 電話帳への登録は取り消せないので、重複候補があるときだけ確認ダイアログ（中止 / 別人として登録）。それ以外は確認なし。
+- Irreversible actions: 電話帳への登録は取り消せないので、重複候補があるときは左右比較の画面（統合 / 別人として登録 / 既存を電話帳アプリで編集 / 既存を削除して登録）。削除だけは確認ダイアログを挟む。それ以外は確認なし。
 
 ## 4. Accessibility floor (non-negotiable)
 

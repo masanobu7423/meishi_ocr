@@ -54,10 +54,13 @@ Contact toContact(CardFields f, {required DateTime scannedAt, String? source}) {
   );
 }
 
-String _digits(String s) {
+/// Digits only, +81 folded to a leading 0, for comparing phone numbers.
+String phoneDigits(String s) {
   final d = s.replaceAll(RegExp(r'\D'), '');
   return d.startsWith('81') && d.length > 10 ? '0${d.substring(2)}' : d;
 }
+
+String _digits(String s) => phoneDigits(s);
 
 /// First existing contact sharing a phone number (digits compared, +81 folded
 /// to 0) or an email (case-insensitive) with the card. Name is deliberately
