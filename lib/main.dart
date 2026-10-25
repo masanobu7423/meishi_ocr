@@ -210,6 +210,42 @@ class ScanPageState extends State<ScanPage> {
     if (!quiet && mounted) _toast('保存しました${learnedSomething ? "。修正を次回から反映します" : ""}');
   }
 
+  /// Delete the stored card (JSON, note, photos) after confirmation. The
+  /// address book is not touched.
+  Future<void> _deleteCard() async {
+    final stem = _source?.replaceAll('.json', '');
+    if (stem == null) return;
+    final name = _ctl['name']!.text.trim();
+    final go = await showDialog<bool>(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: Text('「${name.isEmpty ? "この名刺" : name}」を削除しますか？'),
+        content: const Text('保存した読み取り結果と写真を削除します。電話帳に登録した連絡先は残ります。'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('中止')),
+          FilledButton(onPressed: () => Navigator.pop(c, true), child: const Text('削除する')),
+        ],
+      ),
+    );
+    if (go != true) return;
+    final (store, _, _) = await _ready;
+    final removed = await store.deleteCard(stem);
+    if (!mounted) return;
+    setState(() {
+      _queue.clear();
+      _front = _back = null;
+      _frontPath = _backPath = null;
+      _source = null;
+      _fields = null;
+      _error = null;
+      for (final c in _ctl.values) {
+        c.clear();
+      }
+    });
+    widget.onSaved();
+    _toast(removed ? '削除しました' : 'この名刺はすでに削除されています');
+  }
+
   /// Register the reviewed card in the device address book. A phone/email
   /// match against an existing contact opens the side-by-side screen.
   Future<void> _registerContact() async {
@@ -430,6 +466,13 @@ class ScanPageState extends State<ScanPage> {
                       icon: const Icon(Icons.add_a_photo_outlined),
                       onPressed: () => shoot(true, ImageSource.camera),
                     ),
+                    if (_source != null)
+                      IconButton(
+                        tooltip: 'この名刺を削除',
+                        icon: const Icon(Icons.delete_outline),
+                        color: scheme.error,
+                        onPressed: _progress == null ? _deleteCard : null,
+                      ),
                     const SizedBox(width: AppSpace.unit),
                     Expanded(
                       child: OutlinedButton(

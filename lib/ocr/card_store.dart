@@ -49,9 +49,14 @@ class CardStore {
     File? backImage,
     DateTime? scannedAt,
   }) async {
-    final now = scannedAt ?? DateTime.now();
     final vertical = isVertical(front);
     final vault = await _dir('vault').create(recursive: true);
+    // Saving an already-saved card (edited later) replaces its note and
+    // keeps the original scan date instead of adding a second note.
+    final olds = await _notesFor(vault, stem);
+    final firstScan = olds.map((o) => o.$2).whereType<DateTime>().fold<DateTime?>(
+        null, (a, b) => a == null || b.isBefore(a) ? b : a);
+    final now = scannedAt ?? firstScan ?? DateTime.now();
     // The card images live with the notes so Obsidian can embed them, and
     // they survive the camera's temp files being cleaned.
     final images = <String, String>{};
@@ -75,10 +80,96 @@ class CardStore {
       'expected': expected,
     }));
     final fields = fieldsFromJson(expected);
-    await File('${vault.path}/${cardNoteFilename(fields, now)}').writeAsString(cardNoteMarkdown(
+    final note = File('${vault.path}/${cardNoteFilename(fields, now)}');
+    await note.writeAsString(cardNoteMarkdown(
         fields, scannedAt: now, vertical: vertical, source: '$stem.json', images: images));
-    await File('${vault.path}/_名刺一覧.md').writeAsString(buildIndex(await _notes(vault)));
+    for (final (f, _) in olds) {
+      // Same folder, so compare names: listSync and our path differ in separators on Windows.
+      if (f.uri.pathSegments.last != note.uri.pathSegments.last) await f.delete();
+    }
+    await _writeIndex(vault);
     return file;
+  }
+
+  /// A stem names one file inside golden/; anything that could leave the
+  /// folder (separators, `..`) is rejected. Same for image paths in JSON,
+  /// which must stay under vault/images.
+  static bool _safeStem(String stem) =>
+      stem.isNotEmpty && !stem.contains(RegExp(r'[/\\]')) && !stem.contains('..');
+  static bool _safeImage(Object? rel) =>
+      rel is String && rel.startsWith('images/') && !rel.split('/').contains('..');
+
+  Future<void> _writeIndex(Directory vault) async =>
+      File('${vault.path}/_名刺一覧.md').writeAsString(buildIndex(await _notes(vault)));
+
+  /// Every note written for [stem] (normally one; the old re-save bug could
+  /// leave several), each with its scan date.
+  Future<List<(File, DateTime?)>> _notesFor(Directory vault, String stem) async {
+    final out = <(File, DateTime?)>[];
+    for (final f in vault.listSync().whereType<File>()) {
+      if (!f.path.endsWith('.md') || f.uri.pathSegments.last.startsWith('_')) continue;
+      final fm = parseFrontmatter(await f.readAsString());
+      if (fm['source'] == '$stem.json') out.add((f, DateTime.tryParse(fm['scanned'] ?? '')));
+    }
+    return out;
+  }
+
+  /// Removes a saved card: its JSON, notes and images. False if nothing
+  /// was stored under [stem].
+  Future<bool> deleteCard(String stem) async {
+    if (!_safeStem(stem)) return false;
+    final json = File('${root.path}/golden/$stem.json');
+    final vault = await _dir('vault').create(recursive: true);
+    final olds = await _notesFor(vault, stem);
+    if (!json.existsSync() && olds.isEmpty) return false;
+    if (json.existsSync()) {
+      final j = jsonDecode(await json.readAsString()) as Map<String, dynamic>;
+      for (final rel in (j['images'] as Map?)?.values ?? const []) {
+        final img = File('${vault.path}/$rel');
+        if (_safeImage(rel) && img.existsSync()) await img.delete();
+      }
+      await json.delete();
+    }
+    for (final (f, _) in olds) {
+      await f.delete();
+    }
+    await _writeIndex(vault);
+    return true;
+  }
+
+  /// Unpacks a zip made by [backup] into this store: same paths are
+  /// overwritten, other cards are kept, and learned.json is only added when
+  /// the store has none. Entries outside vault/, golden/ and learned.json
+  /// are ignored. Returns (files written, files that failed); failures are
+  /// logged to log/errors.txt.
+  Future<(int, int)> restore(File zip) async {
+    var written = 0, failed = 0;
+    for (final e in ZipDecoder().decodeBytes(await zip.readAsBytes())) {
+      if (!e.isFile) continue;
+      final rel = e.name.replaceAll('\\', '/');
+      final inside = rel.startsWith('vault/') || rel.startsWith('golden/') || rel == 'learned.json';
+      if (!inside || rel.split('/').contains('..')) continue;
+      final out = File('${root.path}/$rel');
+      if (rel == 'learned.json' && out.existsSync()) continue;
+      try {
+        await out.create(recursive: true);
+        await out.writeAsBytes(e.content);
+        written++;
+      } catch (err) {
+        failed++;
+        await appendError('restore $rel', err);
+      }
+    }
+    await _writeIndex(await _dir('vault').create(recursive: true));
+    return (written, failed);
+  }
+
+  /// Backup zips in `<root>/backup/`, newest first.
+  Future<List<File>> backups() async {
+    final d = _dir('backup');
+    if (!d.existsSync()) return const [];
+    return d.listSync().whereType<File>().where((f) => f.path.endsWith('.zip')).toList()
+      ..sort((a, b) => b.path.compareTo(a.path));
   }
 
   Directory get vaultDir => _dir('vault');
@@ -110,6 +201,7 @@ class CardStore {
 
   /// Reads a saved card back for the history screen; null if missing.
   Future<StoredCard?> loadCard(String stem) async {
+    if (!_safeStem(stem)) return null;
     final f = File('${root.path}/golden/$stem.json');
     if (!f.existsSync()) return null;
     final j = jsonDecode(await f.readAsString()) as Map<String, dynamic>;
@@ -118,7 +210,7 @@ class CardStore {
         ];
     final images = (j['images'] as Map?)?.cast<String, String>() ?? const {};
     File? img(String side) =>
-        images[side] == null ? null : File('${root.path}/vault/${images[side]}');
+        _safeImage(images[side]) ? File('${root.path}/vault/${images[side]}') : null;
     return StoredCard(
       stem: stem,
       front: lines('front'),

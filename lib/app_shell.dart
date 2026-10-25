@@ -178,6 +178,60 @@ class _HomeShellState extends State<HomeShell> {
     if (mounted) _toast('$n ファイルをバックアップしました（${file.path}）');
   }
 
+  /// Pick a zip from `<root>/backup/` (made here, or copied in with the
+  /// Files app) and unpack it over the current store.
+  Future<void> _restore() async {
+    final (store, _) = await _ready;
+    final zips = await store.backups();
+    if (!mounted) return;
+    if (zips.isEmpty) {
+      _toast('バックアップがありません。メニューで作るか、zip を ${store.root.path}/backup に置いてください');
+      return;
+    }
+    final picked = await showDialog<File>(
+      context: context,
+      builder: (c) => SimpleDialog(
+        title: const Text('バックアップから復元'),
+        children: [
+          for (final z in zips)
+            ListTile(
+              leading: const Icon(Icons.archive_outlined),
+              title: Text(backupLabel(z)),
+              onTap: () => Navigator.pop(c, z),
+            ),
+        ],
+      ),
+    );
+    if (picked == null || !mounted) return;
+    final go = await showDialog<bool>(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: const Text('復元しますか？'),
+        content: Text('${backupLabel(picked)} のバックアップの名刺を取り込みます。'
+            '同じ名刺は上書きし、ほかの名刺はそのまま残ります。電話帳は変わりません。'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('中止')),
+          FilledButton(onPressed: () => Navigator.pop(c, true), child: const Text('復元する')),
+        ],
+      ),
+    );
+    if (go != true) return;
+    final (int written, int failed) result;
+    try {
+      result = await store.restore(picked);
+    } catch (e) {
+      await store.appendError('restore ${picked.path}', e);
+      if (mounted) _toast('復元できませんでした。zip が壊れているか、バックアップの形式ではありません');
+      return;
+    }
+    _reload();
+    if (!mounted) return;
+    final (written, failed) = result;
+    _toast(failed == 0
+        ? '$written ファイルを復元しました'
+        : '$written ファイルを復元、$failed ファイルは書き込めませんでした（log/errors.txt に記録）');
+  }
+
   void _toast(String m) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m)));
 
   @override
@@ -205,6 +259,7 @@ class _HomeShellState extends State<HomeShell> {
               'account' => _chooseAccount(),
               'sync' => _syncAll(),
               'vcard' => _exportVcard(),
+              'restore' => _restore(),
               _ => _backup(),
             },
             itemBuilder: (_) => const [
@@ -212,6 +267,7 @@ class _HomeShellState extends State<HomeShell> {
               PopupMenuItem(value: 'sync', child: Text('未登録の名刺を電話帳に登録')),
               PopupMenuItem(value: 'vcard', child: Text('全件を vCard に書き出す')),
               PopupMenuItem(value: 'backup', child: Text('バックアップを作る')),
+              PopupMenuItem(value: 'restore', child: Text('バックアップから復元')),
             ],
           ),
         ],
@@ -270,4 +326,12 @@ class _HomeShellState extends State<HomeShell> {
       ),
     );
   }
+}
+
+/// `meishi_backup_2026-10-25_1745.zip` -> `2026-10-25 17:45`; other names
+/// are shown as they are.
+String backupLabel(File zip) {
+  final name = zip.uri.pathSegments.last;
+  final m = RegExp(r'(\d{4}-\d{2}-\d{2})_(\d{2})(\d{2})\.zip$').firstMatch(name);
+  return m == null ? name : '${m[1]} ${m[2]}:${m[3]}';
 }

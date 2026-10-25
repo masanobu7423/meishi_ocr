@@ -35,13 +35,13 @@ TODO(owner): seed color は仮。ブランド色があれば差し替える。
 
 - 下部タブ 4 つ（ホーム / スキャン / 検索 / 一覧）、`NavigationBar`。タブ間で状態を保つため `IndexedStack`。
 - ホームは「件数 2 つ → 主要操作 3 つ → 最近の 5 枚」の順。他タブで名刺を選ぶとスキャンタブに開く。
-- 右上メニューは全タブ共通（vCard 書き出し、バックアップ）。スキャンタブだけ「まとめて取込」アイコンが付く。
+- 右上メニューは全タブ共通（登録先アカウント、未登録をまとめて登録、vCard 書き出し、バックアップを作る、バックアップから復元）。スキャンタブだけ「まとめて取込」アイコンが付く。
 
 ## 3. Components and states
 
-- Button roles → widget: primary = `FilledButton`（電話帳に登録）, secondary = `OutlinedButton` / `FilledButton.tonal`（保存、撮影）, destructive = なし（削除機能なし）
+- Button roles → widget: primary = `FilledButton`（電話帳に登録）, secondary = `OutlinedButton` / `FilledButton.tonal`（保存、撮影）, destructive = `IconButton` in `colorScheme.error`（この名刺を削除）。保存済みの名刺を開いているときだけ出る。
 - Every async view renders: loading（OCR 中はスピナーと「読み取り中…」、保存/登録ボタンは無効）, empty（撮影かアルバム選択への誘導）, error（何が起きたか + 次に何をするか、上部バナー）, success（SnackBar「電話帳に登録しました」）
-- Irreversible actions: 電話帳への登録は取り消せないので、重複候補があるときは左右比較の画面（統合 / 別人として登録 / 既存を電話帳アプリで編集 / 既存を削除して登録）。削除だけは確認ダイアログを挟む。それ以外は確認なし。
+- Irreversible actions: 電話帳への登録は取り消せないので、重複候補があるときは左右比較の画面（統合 / 別人として登録 / 既存を電話帳アプリで編集 / 既存を削除して登録）。削除だけは確認ダイアログを挟む。名刺の削除（読み取り結果と写真）と、バックアップからの復元（同じ名刺を上書き）も確認ダイアログ。それ以外は確認なし。
 
 ## 4. Accessibility floor (non-negotiable)
 
