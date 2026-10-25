@@ -154,6 +154,26 @@ void main() {
     expect(find.textContaining('合う名刺はありません'), findsOneWidget);
   });
 
+  testWidgets('SearchScreen narrows by 職種 chip and minimum 信頼度, and counts the hits', (t) async {
+    const rich = [
+      CardSummary(noteStem: 'a', stem: 'k01', name: '山田 太郎', job: '営業', trust: '5', scanned: '2026-10-24'),
+      CardSummary(noteStem: 'b', stem: 'k02', name: '鈴木 一郎', job: '施工管理', trust: '3', scanned: '2026-10-25'),
+      CardSummary(noteStem: 'c', stem: 'k03', name: '佐藤 花子', job: '営業', scanned: '2026-10-23'),
+    ];
+    await t.pumpWidget(app(SearchScreen(cards: rich, vault: Directory.systemTemp, onTap: (_) {})));
+    expect(find.text('3 件'), findsOneWidget);
+    await t.tap(find.widgetWithText(FilterChip, '営業'));
+    await t.pump();
+    expect(find.text('鈴木 一郎'), findsNothing);
+    expect(find.text('2 件'), findsOneWidget);
+    await t.tap(find.text('4+'));
+    await t.pump();
+    expect(find.text('山田 太郎'), findsOneWidget);
+    expect(find.text('佐藤 花子'), findsNothing);
+    expect(find.text('1 件'), findsOneWidget);
+    expect(find.textContaining('職種 営業　信頼度 5'), findsOneWidget, reason: 'rows show job and rating, labelled');
+  });
+
   testWidgets('ListScreen switches sort order with the segmented control', (t) async {
     await t.pumpWidget(app(ListScreen(cards: _cards, vault: Directory.systemTemp, onTap: (_) {})));
     String? firstTitle() => (t.widget<ListTile>(find.byType(ListTile).first).title as Text).data;

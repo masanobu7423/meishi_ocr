@@ -33,6 +33,7 @@ void main() {
       'fax': '3', 'email': 'e', 'url': 'u', 'postal': 'p', 'address': 'a',
       'corp_no': 'c', 'construction_license': 'cl', 'real_estate_license': 'rl',
       'qualifications': 'q', 'division': 'dv', 'category': 'ct', 'related': 'r',
+      'job': 'j', 'trust': '4',
     }).toJson();
     expect(f, {
       'name': '山田 太郎', 'nameKana': 'やまだ たろう', 'nameRoman': 'Taro Yamada',
@@ -40,6 +41,7 @@ void main() {
       'fax': '3', 'email': 'e', 'url': 'u', 'postal': 'p', 'address': 'a', 'memo': null,
       'corpNo': 'c', 'constructionLicense': 'cl', 'realEstateLicense': 'rl',
       'qualifications': 'q', 'division': 'dv', 'category': 'ct', 'related': 'r',
+      'job': 'j', 'trust': '4',
     });
   });
 

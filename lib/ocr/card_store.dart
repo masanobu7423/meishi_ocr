@@ -7,6 +7,7 @@ import 'package:image/image.dart' as img;
 import 'card_note.dart';
 import 'card_status.dart';
 import 'extractor.dart';
+import 'jobs.dart';
 import 'learned.dart';
 import 'ocr_line.dart';
 import 'vault_index.dart';
@@ -189,8 +190,8 @@ class CardStore {
   }
 
   /// Unpacks a zip made by [backup] into this store: same paths are
-  /// overwritten, other cards are kept, and learned.json is only added when
-  /// the store has none. Entries outside vault/, golden/ and learned.json
+  /// overwritten, other cards are kept, and learned.json / jobs.json are only
+  /// added when the store has none. Entries outside vault/, golden/ and those
   /// are ignored. Returns (files written, files that failed); failures are
   /// logged to log/errors.txt.
   Future<(int, int)> restore(File zip) async {
@@ -198,10 +199,10 @@ class CardStore {
     for (final e in ZipDecoder().decodeBytes(await zip.readAsBytes())) {
       if (!e.isFile) continue;
       final rel = e.name.replaceAll('\\', '/');
-      final inside = rel.startsWith('vault/') || rel.startsWith('golden/') || rel == 'learned.json';
+      final inside = rel.startsWith('vault/') || rel.startsWith('golden/') || _rootFiles.contains(rel);
       if (!inside || rel.split('/').contains('..')) continue;
       final out = File('${root.path}/$rel');
-      if (rel == 'learned.json' && out.existsSync()) continue;
+      if (_rootFiles.contains(rel) && out.existsSync()) continue;
       try {
         await out.create(recursive: true);
         await out.writeAsBytes(e.content);
@@ -307,6 +308,24 @@ class CardStore {
   Future<void> saveSettings(Map<String, dynamic> settings) =>
       File('${root.path}/settings.json').writeAsString(jsonEncode(settings));
 
+  /// The user's 職種 list (`<root>/jobs.json`); the defaults until saved or
+  /// when the saved list is empty.
+  Future<List<String>> loadJobs() async {
+    final f = File('${root.path}/jobs.json');
+    if (!f.existsSync()) return defaultJobs;
+    try {
+      final j = jsonDecode(await f.readAsString());
+      final l = [if (j is List) for (final v in j) if (v is String && v.isNotEmpty) v];
+      if (l.isNotEmpty) return l; // an emptied list means "back to the defaults"
+    } catch (e) {
+      await appendError('jobs.json', e);
+    }
+    return defaultJobs;
+  }
+
+  Future<void> saveJobs(List<String> jobs) =>
+      File('${root.path}/jobs.json').writeAsString(const JsonEncoder.withIndent(' ').convert(jobs));
+
   /// Rules learned from the user's corrections (`<root>/learned.json`).
   Future<Learned> loadLearned() async {
     final f = File('${root.path}/learned.json');
@@ -337,6 +356,9 @@ class CardStore {
         mode: FileMode.append);
   }
 
+  /// Settings files next to the folders; backed up, restored only when missing.
+  static const _rootFiles = ['learned.json', 'jobs.json'];
+
   /// `backup/meishi_backup_<date>_<time>.zip` with vault (notes + images),
   /// golden JSON and learned.json. Returns the file and the entry count.
   /// Everything needed to rebuild the history on another phone; the zip is
@@ -354,9 +376,9 @@ class CardStore {
         archive.add(ArchiveFile.bytes(rel, await f.readAsBytes()));
       }
     }
-    final learned = File('${root.path}/learned.json');
-    if (learned.existsSync()) {
-      archive.add(ArchiveFile.bytes('learned.json', await learned.readAsBytes()));
+    for (final name in _rootFiles) {
+      final f = File('${root.path}/$name');
+      if (f.existsSync()) archive.add(ArchiveFile.bytes(name, await f.readAsBytes()));
     }
     final out = File('${(await _dir('backup').create(recursive: true)).path}/meishi_backup_$stamp.zip');
     await out.writeAsBytes(ZipEncoder().encodeBytes(archive));
@@ -415,4 +437,6 @@ CardFields fieldsFromJson(Map<String, String?> j) => CardFields()
   ..qualifications = j['qualifications']
   ..division = j['division']
   ..category = j['category']
-  ..related = j['related'];
+  ..related = j['related']
+  ..job = j['job']
+  ..trust = j['trust'];

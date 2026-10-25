@@ -71,6 +71,24 @@ void main() {
     expect(ctl['category']!.text, '協力会社');
   });
 
+  testWidgets('職種 is a dropdown with the trade jobs; 信頼度 is a 1–5 segmented choice', (t) async {
+    tall(t);
+    await t.pumpWidget(app(CardForm(controllers: ctl, lines: const [])));
+    final menu = find.byWidgetPredicate((w) => w is DropdownMenu<String> && w.controller == ctl['job']);
+    await t.tap(menu);
+    await t.pumpAndSettle();
+    await t.tap(find.text('鳶').last);
+    await t.pumpAndSettle();
+    expect(ctl['job']!.text, '鳶');
+    expect(find.text('信頼度'), findsOneWidget);
+    await t.tap(find.text('4'));
+    await t.pump();
+    expect(ctl['trust']!.text, '4');
+    await t.tap(find.text('4'));
+    await t.pump();
+    expect(ctl['trust']!.text, isEmpty, reason: 'tapping again clears the rating');
+  });
+
   testWidgets('address parts rebuild the address, and the address re-splits the parts', (t) async {
     tall(t);
     ctl['address']!.text = '東京都渋谷区神宮前1-2-3 サンライズビル5F';

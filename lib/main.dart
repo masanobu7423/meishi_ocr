@@ -22,6 +22,8 @@ import 'ocr/learned.dart';
 import 'ocr/merge.dart';
 import 'ocr/ocr_line.dart';
 import 'ocr/ocr_pipeline.dart';
+import 'ocr/card_note.dart' show defaultJob;
+import 'ocr/jobs.dart';
 import 'ocr/review_queue.dart';
 import 'ocr/vcard_export.dart' show vcardOfFields;
 import 'share.dart';
@@ -53,12 +55,15 @@ class ScanPage extends StatefulWidget {
   final Future<Account?> Function() account;
   /// Previously used 区分 / 部門 / 関係者 / 資格 values for the form's chips.
   final Map<String, List<String>> suggestions;
+  /// The user's 職種 list for the form's dropdown.
+  final List<String> jobs;
   const ScanPage({
     super.key,
     required this.ready,
     required this.onSaved,
     required this.account,
     this.suggestions = const {},
+    this.jobs = defaultJobs,
   });
 
   @override
@@ -99,6 +104,7 @@ class ScanPageState extends State<ScanPage> {
     _fields = _front == null
         ? null
         : extract(_front!, back: _back ?? const [], learned: _learned);
+    _fields?.job = defaultJob(_fields!); // 職種 guessed from dept/title; the form can change it
     final j = _fields?.toJson() ?? const {};
     for (final k in CardFields.keys) {
       _ctl[k]!.text = j[k] ?? '';
@@ -604,6 +610,7 @@ class ScanPageState extends State<ScanPage> {
       if (r.deskewedBy != null) levelled++;
       final back = c.back == null ? null : await ocr.recognize(c.back!.path, front: false);
       final guess = extract(r.lines, back: back?.lines ?? const [], learned: learned);
+      guess.job = defaultJob(guess);
       await store.saveCard(
           stem: c.stem,
           front: r.lines,
@@ -694,6 +701,7 @@ class ScanPageState extends State<ScanPage> {
                 lines: [...?_front, ...?_back],
                 missing: _missing,
                 suggestions: widget.suggestions,
+                jobs: widget.jobs,
                 header: Column(
                   children: [
                     _CardHeader(

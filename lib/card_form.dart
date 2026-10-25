@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'ocr/address.dart';
 import 'ocr/extractor.dart';
+import 'ocr/jobs.dart';
 import 'ocr/ocr_line.dart';
 import 'ocr/vault_index.dart' show splitNames;
 import 'theme.dart';
@@ -15,6 +16,8 @@ const fieldLabels = <String, String>{
   'division': '部門',
   'dept': '部署',
   'title': '役職',
+  'job': '職種',
+  'trust': '信頼度',
   'phone': '電話',
   'mobile': '携帯',
   'fax': 'FAX',
@@ -34,13 +37,16 @@ const fieldLabels = <String, String>{
 /// Fields in the order a person reads a card: who, where, how to reach,
 /// the trade data printed small at the bottom, then the user's own tags.
 const fieldOrder = [
-  'name', 'nameKana', 'company', 'division', 'dept', 'title',
+  'name', 'nameKana', 'company', 'division', 'dept', 'title', 'job',
   'phone', 'mobile', 'email', 'postal', 'address', 'fax', 'url',
   'corpNo', 'constructionLicense', 'realEstateLicense', 'qualifications',
-  'category', 'related', 'nameRoman', 'memo',
+  'category', 'trust', 'related', 'nameRoman', 'memo',
 ];
 
 /// 区分 choices. Values typed by hand or used before are offered too.
+/// 信頼度 scale; stored as the digit so Obsidian can sort on it.
+const trustLevels = ['1', '2', '3', '4', '5'];
+
 const categoryChoices = ['元請', '下請', '協力会社', '取引先', '顧客', '設計事務所', '官公庁', 'その他'];
 
 /// Comma-separated multi-value fields: a suggestion chip appends.
@@ -65,6 +71,8 @@ class CardForm extends StatefulWidget {
   final List<OcrLine> lines;
   final Set<String> missing;
   final Map<String, List<String>> suggestions;
+  /// 職種 choices (the user's list); values already in use are appended.
+  final List<String> jobs;
   /// Scrolls with the fields (photos, queue arrows, action chips), so a
   /// short screen (landscape with the keyboard up) never overflows.
   final Widget? header;
@@ -74,6 +82,7 @@ class CardForm extends StatefulWidget {
     required this.lines,
     this.missing = const {},
     this.suggestions = const {},
+    this.jobs = defaultJobs,
     this.header,
   });
 
@@ -202,6 +211,28 @@ class _CardFormState extends State<CardForm> {
         dropdownMenuEntries: [for (final e in entries) DropdownMenuEntry(value: e, label: e)],
       );
 
+  /// 信頼度 1–5 as segments; tapping the chosen one again clears it.
+  Widget _trust(TextTheme text, ColorScheme scheme) {
+    final c = widget.controllers['trust']!;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(fieldLabels['trust']!, style: text.labelLarge?.copyWith(color: scheme.onSurfaceVariant)),
+        const SizedBox(height: AppSpace.unit / 2),
+        SegmentedButton<String>(
+          segments: [for (final n in trustLevels) ButtonSegment(value: n, label: Text(n))],
+          selected: {if (c.text.trim().isNotEmpty) c.text.trim()},
+          emptySelectionAllowed: true,
+          showSelectedIcon: false,
+          onSelectionChanged: (s) => setState(() => c.text = s.isEmpty ? '' : s.first),
+        ),
+        const SizedBox(height: AppSpace.unit / 2),
+        Text('1 要注意 ／ 3 ふつう ／ 5 とても高い（未設定のままでも保存できます）',
+            style: text.labelSmall?.copyWith(color: scheme.onSurfaceVariant)),
+      ],
+    );
+  }
+
   Widget _addressParts() => ExpansionTile(
         title: const Text('住所の内訳'),
         subtitle: const Text('都道府県・市区町村・丁目・番地・建物・号室に分けて直せます'),
@@ -228,6 +259,7 @@ class _CardFormState extends State<CardForm> {
       ...categoryChoices,
       ...?widget.suggestions['category']?.where((v) => !categoryChoices.contains(v)),
     ];
+    final jobs = [...widget.jobs, ...?widget.suggestions['job']?.where((v) => !widget.jobs.contains(v))];
     return ListView(
       padding: const EdgeInsets.fromLTRB(
           AppSpace.gutter, AppSpace.unit, AppSpace.gutter, AppSpace.unit * 12),
@@ -238,6 +270,8 @@ class _CardFormState extends State<CardForm> {
             padding: const EdgeInsets.only(bottom: AppSpace.unit),
             child: switch (k) {
               'category' => _dropdown(fieldLabels[k]!, widget.controllers[k]!, categories, typeable: true),
+              'job' => _dropdown(fieldLabels[k]!, widget.controllers[k]!, jobs, typeable: true),
+              'trust' => _trust(text, scheme),
               'address' => Column(children: [_text(k, text, scheme), _addressParts()]),
               _ => Column(
                   crossAxisAlignment: CrossAxisAlignment.start,

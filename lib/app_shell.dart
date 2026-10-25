@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/material.dart';
 import 'package:flutter_contacts/flutter_contacts.dart';
 import 'package:image_picker/image_picker.dart';
@@ -17,6 +18,8 @@ import 'ocr/ocr_pipeline.dart';
 import 'ocr/sync.dart';
 import 'ocr/vault_index.dart';
 import 'ocr/vcard_export.dart';
+import 'jobs_screen.dart';
+import 'ocr/jobs.dart';
 import 'share.dart';
 
 /// Android: `/sdcard/Android/data/<pkg>/files` (reachable with plain adb pull
@@ -48,12 +51,14 @@ class _HomeShellState extends State<HomeShell> {
   bool _accountResolved = false;
 
   Map<String, List<String>> _suggestions = const {};
+  List<String> _jobs = defaultJobs;
   StatusFilter _listFilter = StatusFilter.all;
 
   Future<List<CardSummary>> _load() async {
     final (store, _) = await _ready;
     final notes = await store.notes();
     _suggestions = suggestionsFrom(notes);
+    _jobs = await store.loadJobs();
     return cardSummaries(notes);
   }
 
@@ -70,6 +75,22 @@ class _HomeShellState extends State<HomeShell> {
   Future<void> _open(CardSummary c) async {
     _go(1);
     await _scanKey.currentState?.loadStoredCard(c);
+  }
+
+  /// The 職種 list behind the form's dropdown: add / rename / delete.
+  Future<void> _editJobs() async {
+    final (store, _) = await _ready;
+    if (!mounted) return;
+    final edited = List.of(_jobs);
+    await Navigator.of(context).push(MaterialPageRoute(builder: (_) => JobsScreen(jobs: edited)));
+    if (listEquals(edited, _jobs)) return;
+    try {
+      await store.saveJobs(edited);
+    } catch (e) {
+      if (mounted) _toast('職種の一覧を保存できませんでした: $e');
+      return;
+    }
+    _reload(); // re-reads jobs.json (an empty list falls back to the defaults)
   }
 
   /// Selected cards as one vCard through the system share sheet.
@@ -348,12 +369,14 @@ class _HomeShellState extends State<HomeShell> {
               'vcard' => _exportVcard(),
               'share_vcard' => _shareAllVcard(),
               'share_backup' => _shareBackup(),
+              'jobs' => _editJobs(),
               'restore' => _restore(),
               _ => _backup(),
             },
             itemBuilder: (_) => const [
               PopupMenuItem(value: 'account', child: Text('登録先のアカウント')),
               PopupMenuItem(value: 'sync', child: Text('未登録の名刺を電話帳に登録')),
+              PopupMenuItem(value: 'jobs', child: Text('職種の一覧を編集')),
               PopupMenuItem(value: 'share_vcard', child: Text('全件を vCard で共有')),
               PopupMenuItem(value: 'vcard', child: Text('全件を vCard に書き出す')),
               PopupMenuItem(value: 'share_backup', child: Text('バックアップを共有')),
@@ -410,6 +433,7 @@ class _HomeShellState extends State<HomeShell> {
                 onSaved: _reload,
                 account: _resolveAccount,
                 suggestions: _suggestions,
+                jobs: _jobs,
               ),
               SearchScreen(
                   cards: cards, vault: store.vaultDir, onTap: _open, onDelete: _deleteCards, onShare: _shareCards),

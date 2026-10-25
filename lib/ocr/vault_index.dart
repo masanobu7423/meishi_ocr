@@ -28,10 +28,10 @@ String buildIndex(Map<String, String> notes) {
 
   final b = StringBuffer()
     ..write('---\ntype: meishi_index\ncount: ${cards.length}\n---\n')
-    ..write('# 名刺一覧\n\n| 氏名 | 会社 | 職種 | 地域 | 取込日 |\n|---|---|---|---|---|\n');
+    ..write('# 名刺一覧\n\n| 氏名 | 会社 | 職種 | 信頼度 | 地域 | 取込日 |\n|---|---|---|---|---|---|\n');
   for (final c in cards) {
     final co = c.fm['company'];
-    b.write('| ${link(c)} | ${co == null ? '—' : '[[$co]]'} | ${opt(c.fm['job'])} | '
+    b.write('| ${link(c)} | ${co == null ? '—' : '[[$co]]'} | ${opt(c.fm['job'])} | ${opt(c.fm['trust'])} | '
         '${opt(c.fm['pref'])} | ${opt(c.fm['scanned'])} |\n');
   }
 
@@ -59,6 +59,7 @@ String buildIndex(Map<String, String> notes) {
   section('会社別', (fm) => [fm['company']], (k) => '[[$k]]');
   section('職種別', (fm) => [fm['job']], (k) => '[[職種_$k]]');
   section('地域別', (fm) => [fm['pref']], (k) => '[[$k]]');
+  section('信頼度別', (fm) => [fm['trust']], (k) => '[[信頼度_$k]]');
   section('区分別', (fm) => [fm['category']], (k) => '[[区分_$k]]');
   section('関係者別', (fm) => splitNames(fm['related']), (k) => '[[$k]]');
   b.write('\n#名刺 #名刺_索引\n');

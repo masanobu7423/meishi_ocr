@@ -24,6 +24,7 @@ class Learned {
   final Map<String, int> confusions = {};
 
   static const _vocabFields = {'title', 'dept', 'division'};
+  static const _userOwned = {'job', 'trust', 'category', 'related'};
   static const _textFields = {'name', 'company'};
 
   Learned();
@@ -52,6 +53,7 @@ class Learned {
     final texts = {for (final l in lines) normalize(l.text)};
     for (final e in corrected.entries) {
       final k = e.key;
+      if (_userOwned.contains(k)) continue; // never OCR'd, so nothing to learn
       final c = e.value == null ? null : normalize(e.value!);
       final g = guess[k] == null ? null : normalize(guess[k]!);
       if (c == null || c.isEmpty || c == g) continue;

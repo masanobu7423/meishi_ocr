@@ -44,7 +44,7 @@ Source of truth in code: `lib/theme.dart`. A value not in this table does not ap
 ## 3. Components and states
 
 - Button roles → widget: primary = `FilledButton`（電話帳に登録）, secondary = `OutlinedButton` / `FilledButton.tonal`（保存、撮影）, destructive = `IconButton` in `colorScheme.error`（保存済みなら「この名刺を削除」、未保存の読み取りなら「この読み取りを破棄」）。
-- Choice fields: `DropdownMenu`（区分は固定 8 択 + 入力可、都道府県は 47 件）。複数値の項目（関係者・資格）はカンマ区切りの `TextField` に、過去に使った値を `InputChip` で並べてタップで追記。住所は全文の `TextField` を正とし、`ExpansionTile`「住所の内訳」で 6 区分に分けて直せる（双方向同期）。
+- Choice fields: `DropdownMenu`（区分は固定 8 択 + 入力可、職種は利用者の一覧（既定は建設業種 29 件、メニュー「職種の一覧を編集」で追加・名前変更・削除）+ 使用中の値 + 入力可、都道府県は 47 件）。信頼度は 1〜5 の `SegmentedButton`（もう一度押すと解除）。検索タブは文字入力の下に職種の `FilterChip`（使用中の値のみ）と信頼度下限の `SegmentedButton`、右端に件数。複数値の項目（関係者・資格）はカンマ区切りの `TextField` に、過去に使った値を `InputChip` で並べてタップで追記。住所は全文の `TextField` を正とし、`ExpansionTile`「住所の内訳」で 6 区分に分けて直せる（双方向同期）。
 - Every async view renders: loading（OCR 中はスピナーと「読み取り中…」、保存/登録ボタンは無効）, empty（撮影・アルバム・続けて撮影への誘導）, error（何が起きたか + 次に何をするか、上部バナー）, success（SnackBar「電話帳に登録しました」）
 - Irreversible actions: 電話帳への登録は取り消せないので、重複候補があるときは左右比較の画面（統合 / 別人として登録 / 既存を電話帳アプリで編集 / 既存を削除して登録）。削除だけは確認ダイアログを挟む。名刺の削除（読み取り結果と写真）と、バックアップからの復元（同じ名刺を上書き）も確認ダイアログ。それ以外は確認なし。
 

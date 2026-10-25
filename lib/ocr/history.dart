@@ -12,6 +12,8 @@ class CardSummary {
   final String? company, title, memo, imageFront, imageBack, scanned;
   final String? kana, phone, mobile, email;
   final String? category, related, division, qualifications;
+  /// 職種 and 信頼度 ('1'–'5'); the search screen filters on these.
+  final String? job, trust;
   final CardStatus status;
 
   const CardSummary({
@@ -32,12 +34,14 @@ class CardSummary {
     this.related,
     this.division,
     this.qualifications,
+    this.job,
+    this.trust,
     this.status = CardStatus.reviewed,
   });
 
   String get _haystack => _fold([
         name, kana, company, title, memo, phone, mobile, email,
-        category, related, division, qualifications,
+        category, related, division, qualifications, job,
       ].whereType<String>().join(' '));
 
   /// Case-, width- and kana-insensitive substring match; empty query = all.
@@ -68,11 +72,32 @@ List<CardSummary> cardSummaries(Map<String, String> notes) {
       related: fm['related'],
       division: fm['division'],
       qualifications: fm['qualifications'],
+      job: fm['job'],
+      trust: fm['trust'],
       status: parseStatus(fm['status']),
     ));
   }
   out.sort((a, b) => (b.scanned ?? '').compareTo(a.scanned ?? ''));
   return out;
+}
+
+/// Text search narrowed by 職種 and a minimum 信頼度 (cards without a
+/// rating never pass a minimum).
+List<CardSummary> searchCards(List<CardSummary> cards, {String query = '', String? job, int minTrust = 0}) => [
+      for (final c in cards)
+        if (c.matches(query) &&
+            (job == null || c.job == job) &&
+            (minTrust == 0 || (int.tryParse(c.trust ?? '') ?? 0) >= minTrust))
+          c,
+    ];
+
+/// Every 職種 in use, most used first (ties keep first-seen order).
+List<String> jobsOf(List<CardSummary> cards) {
+  final n = <String, int>{};
+  for (final c in cards) {
+    if (c.job case final j? when j.isNotEmpty) n.update(j, (x) => x + 1, ifAbsent: () => 1);
+  }
+  return n.keys.toList()..sort((a, b) => n[b]!.compareTo(n[a]!));
 }
 
 const _halfKana = 'ｦｧｨｩｪｫｬｭｮｯｰｱｲｳｴｵｶｷｸｹｺｻｼｽｾｿﾀﾁﾂﾃﾄﾅﾆﾇﾈﾉﾊﾋﾌﾍﾎﾏﾐﾑﾒﾓﾔﾕﾖﾗﾘﾙﾚﾛﾜﾝ';
@@ -99,7 +124,7 @@ String _fold(String s) {
 /// Values already used for the user-maintained fields, most used first
 /// (ties keep first-seen order), for the form's suggestion chips.
 Map<String, List<String>> suggestionsFrom(Map<String, String> notes) {
-  const single = ['category', 'division'];
+  const single = ['category', 'division', 'job'];
   const multi = ['related', 'qualifications'];
   final counts = {for (final k in [...single, ...multi]) k: <String, int>{}};
   for (final md in notes.values) {

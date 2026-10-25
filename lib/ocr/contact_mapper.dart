@@ -56,6 +56,8 @@ Contact toContact(CardFields f, {required DateTime scannedAt, String? source}) {
           note: [
         if (f.memo != null) f.memo!,
         if (f.category != null) '区分: ${f.category}',
+        if (f.job != null) '職種: ${f.job}',
+        if (f.trust != null) '信頼度: ${f.trust}',
         if (f.related != null) '関係者: ${f.related}',
         if (f.corpNo != null) '法人番号: ${f.corpNo}',
         if (f.constructionLicense != null) '建設業許可: ${f.constructionLicense}',

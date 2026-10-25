@@ -15,12 +15,14 @@ class CardFields {
   /// division (部門), label (区分) and related users are the user's own.
   String? corpNo, constructionLicense, realEstateLicense, qualifications;
   String? division, category, related;
+  /// 職種 (pre-filled from dept/title, the user's to change) and 信頼度 1–5.
+  String? job, trust;
 
   static const keys = [
     'name', 'nameKana', 'nameRoman', 'company', 'dept', 'title',
     'phone', 'mobile', 'fax', 'email', 'url', 'postal', 'address', 'memo',
     'corpNo', 'constructionLicense', 'realEstateLicense', 'qualifications',
-    'division', 'category', 'related',
+    'division', 'category', 'related', 'job', 'trust',
   ];
 
   void set(String key, String? v) {
@@ -46,6 +48,8 @@ class CardFields {
       case 'division': division = v;
       case 'category': category = v;
       case 'related': related = v;
+      case 'job': job = v;
+      case 'trust': trust = v;
     }
   }
 
@@ -71,6 +75,8 @@ class CardFields {
         'division': division,
         'category': category,
         'related': related,
+        'job': job,
+        'trust': trust,
       };
 }
 

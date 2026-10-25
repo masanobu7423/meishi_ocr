@@ -188,6 +188,8 @@ class _CardListState extends State<CardList> {
             if (c.category != null) '［${c.category}］',
             if (c.company != null) c.company!,
             if (c.title != null) c.title!,
+            if (c.job != null) '職種 ${c.job}',
+            if (c.trust != null) '信頼度 ${c.trust}',
             if (c.memo != null) c.memo!,
           ].join('　')),
           trailing: Column(
@@ -254,10 +256,17 @@ class SearchScreen extends StatefulWidget {
 
 class _SearchScreenState extends State<SearchScreen> {
   String _query = '';
+  String? _job;
+  int _minTrust = 0;
 
   @override
   Widget build(BuildContext context) {
-    final hits = sortCards(widget.cards.where((c) => c.matches(_query)).toList(), CardSort.date);
+    final text = Theme.of(context).textTheme;
+    final scheme = Theme.of(context).colorScheme;
+    final jobs = jobsOf(widget.cards);
+    if (_job != null && !jobs.contains(_job)) _job = null;
+    final hits = sortCards(
+        searchCards(widget.cards, query: _query, job: _job, minTrust: _minTrust), CardSort.date);
     return Column(
       children: [
         Padding(
@@ -266,9 +275,54 @@ class _SearchScreenState extends State<SearchScreen> {
             autofocus: false,
             decoration: const InputDecoration(
               prefixIcon: Icon(Icons.search),
-              labelText: '氏名・ふりがな・会社・電話・メールで探す',
+              labelText: '氏名・会社・電話・メール・職種で探す',
             ),
             onChanged: (v) => setState(() => _query = v),
+          ),
+        ),
+        // 職種 chips (only the values in use) and a minimum 信頼度: the two
+        // axes the Obsidian analysis groups by, so the app can answer the
+        // same questions on the spot.
+        if (jobs.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(AppSpace.gutter, AppSpace.unit, AppSpace.gutter, 0),
+            child: Wrap(
+              spacing: AppSpace.unit,
+              runSpacing: AppSpace.unit / 2,
+              children: [
+                for (final j in jobs)
+                  FilterChip(
+                    label: Text(j),
+                    selected: _job == j,
+                    onSelected: (on) => setState(() => _job = on ? j : null),
+                  ),
+              ],
+            ),
+          ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(AppSpace.gutter, AppSpace.unit, AppSpace.gutter, 0),
+          child: Row(
+            children: [
+              Text('信頼度', style: text.labelLarge?.copyWith(color: scheme.onSurfaceVariant)),
+              const SizedBox(width: AppSpace.unit),
+              Expanded(
+                child: SegmentedButton<int>(
+                  segments: const [
+                    // Short labels: four segments share ~260dp beside the label and
+                    // the count, and '3以上' wrapped at a large font scale on the Samsung.
+                    ButtonSegment(value: 0, label: Text('全て')),
+                    ButtonSegment(value: 3, label: Text('3+')),
+                    ButtonSegment(value: 4, label: Text('4+')),
+                    ButtonSegment(value: 5, label: Text('5')),
+                  ],
+                  selected: {_minTrust},
+                  showSelectedIcon: false,
+                  onSelectionChanged: (s) => setState(() => _minTrust = s.first),
+                ),
+              ),
+              const SizedBox(width: AppSpace.unit),
+              Text('${hits.length} 件', style: text.labelLarge),
+            ],
           ),
         ),
         Expanded(
@@ -280,7 +334,7 @@ class _SearchScreenState extends State<SearchScreen> {
             onShare: widget.onShare,
             emptyText: widget.cards.isEmpty
                 ? 'まだ名刺がありません。撮影して保存すると検索できます'
-                : '「$_query」に合う名刺はありません',
+                : '条件に合う名刺はありません',
           ),
         ),
       ],
