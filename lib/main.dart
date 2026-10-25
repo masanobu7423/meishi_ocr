@@ -393,17 +393,84 @@ class ScanPageState extends State<ScanPage> {
     await store.appendCorrection(stem, guess, corrected);
     widget.onSaved();
     if (!quiet && mounted) _toast('保存しました${learnedSomething ? "。修正を次回から反映します" : ""}');
+    if (!quiet) await _pushToContact(fieldsFromJson(corrected));
   }
 
   /// The card on screen is now in the address book: status only, no
   /// re-learning (the corrections were learned when it was saved).
-  Future<void> _markRegistered() async {
+  Future<void> _markRegistered({String? contactId}) async {
     final stem = _source?.replaceAll('.json', '');
     if (stem == null) return;
     final (store, _, _) = await _ready;
-    await store.setStatus(stem, CardStatus.registered);
+    await store.setStatus(stem, CardStatus.registered, contactId: contactId);
     _status = CardStatus.registered;
+    if (contactId != null) _ctl['contactId']!.text = contactId; // the form's hidden link
     widget.onSaved();
+  }
+
+  /// Edits of a linked, registered card go to the address book too (the
+  /// device then syncs the Google account). Problems are reported, never
+  /// fatal: the card itself is already saved.
+  Future<void> _pushToContact(CardFields fields) async {
+    final id = fields.contactId;
+    if (id == null || id.isEmpty || _status != CardStatus.registered || fields.name == null) return;
+    try {
+      if (!await FlutterContacts.permissions.has(PermissionType.readWrite)) {
+        if (mounted) _toast('電話帳は更新していません（連絡先の権限がありません）');
+        return;
+      }
+      final full = await FlutterContacts.get(id, properties: ContactProperties.all);
+      if (full == null) {
+        if (mounted) _toast('電話帳に元の連絡先が見つかりません（削除された可能性）');
+        return;
+      }
+      await FlutterContacts.update(applyCard(full, fields, scannedAt: DateTime.now()));
+      if (mounted) _toast('電話帳の連絡先も更新しました');
+    } catch (e) {
+      if (mounted) _toast('電話帳の更新に失敗しました: $e');
+    }
+  }
+
+  /// The linked contact's current values into the form (what was edited in
+  /// Google / the phone book); 保存 then makes them the card's.
+  Future<void> _pullFromContact() async {
+    final id = _ctl['contactId']!.text.trim();
+    if (id.isEmpty) return;
+    final perm = await FlutterContacts.permissions.request(PermissionType.readWrite);
+    if (perm != PermissionStatus.granted) {
+      setState(() => _error = '連絡先の権限がありません。端末の設定でこのアプリに連絡先を許可してください');
+      return;
+    }
+    final Contact? full;
+    try {
+      full = await FlutterContacts.get(id, properties: ContactProperties.all);
+    } catch (e) {
+      if (mounted) setState(() => _error = '電話帳を読めませんでした: $e');
+      return;
+    }
+    if (!mounted) return;
+    if (full == null) {
+      setState(() => _error = '電話帳に元の連絡先が見つかりません（削除された可能性）');
+      return;
+    }
+    final theirs = fieldsFromContact(full).toJson();
+    // The contact's department is "<division> <dept>" (toContact); take the
+    // division back off so a pull + push does not stack it.
+    final division = _ctl['division']!.text.trim();
+    if (division.isNotEmpty && (theirs['dept'] ?? '').startsWith('$division ')) {
+      theirs['dept'] = theirs['dept']!.substring(division.length + 1);
+    }
+    var n = 0;
+    for (final k in fieldOrder) {
+      final v = theirs[k];
+      final mine = _ctl[k]!.text.trim();
+      // The reading is stored in katakana; a hiragana reading is not a difference.
+      if (v == null || v.isEmpty || v == mine || (k == 'nameKana' && hiraToKata(normalize(mine)) == v)) continue;
+      _ctl[k]!.text = v;
+      n++;
+    }
+    setState(() => _error = null);
+    _toast(n == 0 ? '電話帳と同じ内容です' : '電話帳から $n 項目を取り込みました。「保存」で確定します');
   }
 
   /// Delete the stored card (JSON, note, photos) after confirmation. The
@@ -499,9 +566,9 @@ class ScanPageState extends State<ScanPage> {
       if (!done) return;
     } else {
       await _saveReviewed(quiet: true);
-      await FlutterContacts.create(toContact(fields, scannedAt: DateTime.now(), source: _source),
+      final id = await FlutterContacts.create(toContact(fields, scannedAt: DateTime.now(), source: _source),
           account: await widget.account());
-      await _markRegistered();
+      await _markRegistered(contactId: id);
       if (!mounted) return;
       _toast('電話帳に登録しました');
     }
@@ -532,7 +599,7 @@ class ScanPageState extends State<ScanPage> {
         final merged = mergeContact(full, fields,
             useCard: decision.useCard, keepExisting: decision.keepExisting, scannedAt: now);
         await FlutterContacts.update(merged);
-        await _markRegistered();
+        await _markRegistered(contactId: full.id);
         final stem = _source?.replaceAll('.json', '');
         if (!mounted) return true;
         final changed = decision.useCard.length;
@@ -557,17 +624,17 @@ class ScanPageState extends State<ScanPage> {
         return true;
       case DuplicateAction.separate:
         await _saveReviewed(quiet: true);
-        await FlutterContacts.create(toContact(fields, scannedAt: now, source: _source),
+        final id = await FlutterContacts.create(toContact(fields, scannedAt: now, source: _source),
             account: await widget.account());
-        await _markRegistered();
+        await _markRegistered(contactId: id);
         if (mounted) _toast('別の連絡先として登録しました');
         return true;
       case DuplicateAction.replace:
         await _saveReviewed(quiet: true);
         await FlutterContacts.delete(id);
-        await FlutterContacts.create(toContact(fields, scannedAt: now, source: _source),
+        final created = await FlutterContacts.create(toContact(fields, scannedAt: now, source: _source),
             account: await widget.account());
-        await _markRegistered();
+        await _markRegistered(contactId: created);
         if (mounted) _toast('既存の連絡先を削除し、名刺の内容で登録しました');
         return true;
       case DuplicateAction.editExisting:
@@ -716,6 +783,15 @@ class ScanPageState extends State<ScanPage> {
                       onViewPhoto: _viewPhoto,
                     ),
                     _ActionRow(actions: contactActions(_reviewed()), onTap: _launch),
+                    if (_ctl['contactId']!.text.isNotEmpty)
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: TextButton.icon(
+                          onPressed: _progress == null ? _pullFromContact : null,
+                          icon: const Icon(Icons.sync, size: AppSize.iconSmall),
+                          label: const Text('電話帳の内容を取り込む'),
+                        ),
+                      ),
                   ],
                 ),
               ),

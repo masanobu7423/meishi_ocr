@@ -2,6 +2,7 @@ import 'package:flutter_contacts/flutter_contacts.dart';
 
 import 'contact_mapper.dart';
 import 'extractor.dart';
+import 'history.dart';
 
 /// "Google 同期" without any network code: contacts written into the Google
 /// account on the device are synced by Android itself. This module only
@@ -54,4 +55,39 @@ List<SyncItem> syncPlan(List<CardFields> cards, List<Contact> existing) {
     }
   }
   return plan;
+}
+
+enum ImportAction { create, skipLinked, skipExisting, skipNoName }
+
+class ImportItem {
+  final Contact contact;
+  final ImportAction action;
+  const ImportItem(this.contact, this.action);
+}
+
+/// Pull plan: which address-book contacts become new cards. Linked ones
+/// (a card carries their id) and ones a card already matches by phone /
+/// email are skipped, as are contacts without a name.
+List<ImportItem> importPlan(List<Contact> contacts, List<CardSummary> cards) {
+  final linked = {for (final c in cards) if (c.contactId != null) c.contactId!};
+  final keys = <String>{
+    for (final c in cards) ...[
+      for (final p in [c.phone, c.mobile]) if (p != null && p.isNotEmpty) phoneDigits(p),
+      if (c.email != null && c.email!.isNotEmpty) c.email!.toLowerCase(),
+    ],
+  };
+  return [
+    for (final c in contacts)
+      ImportItem(
+        c,
+        c.id != null && linked.contains(c.id)
+            ? ImportAction.skipLinked
+            : (c.displayName ?? '').trim().isEmpty
+                ? ImportAction.skipNoName
+                : c.phones.any((p) => keys.contains(phoneDigits(p.number))) ||
+                        c.emails.any((e) => keys.contains(e.address.toLowerCase()))
+                    ? ImportAction.skipExisting
+                    : ImportAction.create,
+      ),
+  ];
 }

@@ -27,29 +27,7 @@ const _labels = {
 String? _blank(String? s) => s == null || s.trim().isEmpty ? null : s.trim();
 
 /// The existing contact's values in CardFields terms (first of each kind).
-Map<String, String?> _existingValues(Contact c) {
-  final n = c.name;
-  String? phoneOf(bool Function(PhoneLabel) pick) => c.phones
-      .cast<Phone?>()
-      .firstWhere((p) => pick(p!.label.label), orElse: () => null)
-      ?.number;
-  final org = c.organizations.isEmpty ? null : c.organizations.first;
-  final adr = c.addresses.isEmpty ? null : c.addresses.first;
-  return {
-    'name': _blank(c.displayName) ??
-        _blank([n?.last, n?.first].whereType<String>().where((s) => s.isNotEmpty).join(' ')),
-    'company': _blank(org?.name),
-    'dept': _blank(org?.departmentName),
-    'title': _blank(org?.jobTitle),
-    'phone': phoneOf((l) => l != PhoneLabel.mobile && l != PhoneLabel.workFax && l != PhoneLabel.homeFax && l != PhoneLabel.otherFax),
-    'mobile': phoneOf((l) => l == PhoneLabel.mobile || l == PhoneLabel.workMobile),
-    'fax': phoneOf((l) => l == PhoneLabel.workFax || l == PhoneLabel.homeFax || l == PhoneLabel.otherFax),
-    'email': c.emails.isEmpty ? null : c.emails.first.address,
-    'url': c.websites.isEmpty ? null : c.websites.first.url,
-    // Street only: the card's address field has no postal code either.
-    'address': _blank(adr?.street),
-  };
-}
+Map<String, String?> _existingValues(Contact c) => fieldsFromContact(c).toJson();
 
 bool _sameValue(String key, String? a, String? b) {
   if (a == null || b == null) return a == b;

@@ -14,6 +14,8 @@ class CardSummary {
   final String? category, related, division, qualifications;
   /// 職種 and 信頼度 ('1'–'5'); the search screen filters on these.
   final String? job, trust;
+  /// Address-book contact id when the card is linked (registered / imported).
+  final String? contactId;
   final CardStatus status;
 
   const CardSummary({
@@ -36,6 +38,7 @@ class CardSummary {
     this.qualifications,
     this.job,
     this.trust,
+    this.contactId,
     this.status = CardStatus.reviewed,
   });
 
@@ -74,6 +77,7 @@ List<CardSummary> cardSummaries(Map<String, String> notes) {
       qualifications: fm['qualifications'],
       job: fm['job'],
       trust: fm['trust'],
+      contactId: fm['contact_id'],
       status: parseStatus(fm['status']),
     ));
   }

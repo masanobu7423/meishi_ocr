@@ -127,7 +127,7 @@ class CardStore {
 
   /// Changes only the status of a stored card (its data, images and scan
   /// date stay). False when nothing is stored under [stem].
-  Future<bool> setStatus(String stem, CardStatus status) async {
+  Future<bool> setStatus(String stem, CardStatus status, {String? contactId}) async {
     final c = await loadCard(stem);
     if (c == null) return false;
     await saveCard(
@@ -135,7 +135,7 @@ class CardStore {
       front: c.front,
       frontRaw: c.frontRaw,
       back: c.back,
-      expected: c.expected,
+      expected: {...c.expected, 'contactId': ?contactId},
       frontImage: c.frontImage,
       backImage: c.backImage,
       status: status,
@@ -439,4 +439,5 @@ CardFields fieldsFromJson(Map<String, String?> j) => CardFields()
   ..category = j['category']
   ..related = j['related']
   ..job = j['job']
-  ..trust = j['trust'];
+  ..trust = j['trust']
+  ..contactId = j['contactId'];

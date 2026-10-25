@@ -28,6 +28,7 @@ CardFields fieldsFromFrontmatter(Map<String, String> fm) => CardFields()
   ..category = fm['category']
   ..job = fm['job']
   ..trust = fm['trust']
+  ..contactId = fm['contact_id']
   ..related = fm['related'];
 
 /// One vCard 3.0 file for every card note in the vault, so the whole batch

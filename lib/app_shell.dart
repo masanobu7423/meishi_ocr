@@ -256,13 +256,57 @@ class _HomeShellState extends State<HomeShell> {
     if (go != true) return;
     var done = 0;
     for (final p in creates) {
-      await FlutterContacts.create(toContact(p.card, scannedAt: DateTime.now()), account: account);
+      final id = await FlutterContacts.create(toContact(p.card, scannedAt: DateTime.now()), account: account);
       final stem = stems[p.card];
-      if (stem != null && stem.isNotEmpty) await store.setStatus(stem, CardStatus.registered);
+      if (stem != null && stem.isNotEmpty) await store.setStatus(stem, CardStatus.registered, contactId: id);
       done++;
     }
     _reload();
     if (mounted) _toast('$done 件を電話帳に登録しました');
+  }
+
+  /// Pull: contacts of the chosen account (the Google one, synced by the
+  /// device) become cards, so the app holds the whole address book and can
+  /// group it by 職種 / 信頼度. Linked and matching contacts are skipped.
+  Future<void> _importContacts() async {
+    final perm = await FlutterContacts.permissions.request(PermissionType.readWrite);
+    if (perm != PermissionStatus.granted) {
+      _toast('連絡先の権限がありません。端末の設定でこのアプリに連絡先を許可してください');
+      return;
+    }
+    final account = await _resolveAccount();
+    final (store, _) = await _ready;
+    final cards = cardSummaries(await store.notes());
+    // allProperties = everything but photos (not used for a card).
+    final contacts = await FlutterContacts.getAll(properties: ContactProperties.allProperties, account: account);
+    final plan = importPlan(contacts, cards);
+    final creates = plan.where((p) => p.action == ImportAction.create).toList();
+    int n(ImportAction a) => plan.where((p) => p.action == a).length;
+    if (!mounted) return;
+    final go = await showDialog<bool>(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: const Text('電話帳から取り込む'),
+        content: Text('${creates.length} 件を名刺として取り込みます（登録済 ${n(ImportAction.skipLinked)} 件、'
+            '同じ電話・メールの名刺あり ${n(ImportAction.skipExisting)} 件、氏名なし ${n(ImportAction.skipNoName)} 件は飛ばします）。\n'
+            '取込元: ${_accountLabel ?? "端末の既定"}\n写真はありません。取り込んだ名刺は登録済になり、修正すると電話帳にも反映されます'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('中止')),
+          FilledButton(onPressed: () => Navigator.pop(c, true), child: const Text('取り込む')),
+        ],
+      ),
+    );
+    if (go != true) return;
+    var done = 0;
+    for (final p in creates) {
+      final f = fieldsFromContact(p.contact);
+      await store.saveCard(
+          stem: 'pb_${p.contact.id}', front: const [], back: const [], expected: f.toJson(),
+          status: CardStatus.registered);
+      done++;
+    }
+    _reload();
+    if (mounted) _toast('$done 件を電話帳から取り込みました');
   }
 
   Future<void> _exportVcard() async {
@@ -366,6 +410,7 @@ class _HomeShellState extends State<HomeShell> {
             onSelected: (v) => switch (v) {
               'account' => _chooseAccount(),
               'sync' => _syncAll(),
+              'import_contacts' => _importContacts(),
               'vcard' => _exportVcard(),
               'share_vcard' => _shareAllVcard(),
               'share_backup' => _shareBackup(),
@@ -376,6 +421,7 @@ class _HomeShellState extends State<HomeShell> {
             itemBuilder: (_) => const [
               PopupMenuItem(value: 'account', child: Text('登録先のアカウント')),
               PopupMenuItem(value: 'sync', child: Text('未登録の名刺を電話帳に登録')),
+              PopupMenuItem(value: 'import_contacts', child: Text('電話帳から取り込む')),
               PopupMenuItem(value: 'jobs', child: Text('職種の一覧を編集')),
               PopupMenuItem(value: 'share_vcard', child: Text('全件を vCard で共有')),
               PopupMenuItem(value: 'vcard', child: Text('全件を vCard に書き出す')),

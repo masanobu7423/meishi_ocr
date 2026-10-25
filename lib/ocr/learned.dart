@@ -24,7 +24,7 @@ class Learned {
   final Map<String, int> confusions = {};
 
   static const _vocabFields = {'title', 'dept', 'division'};
-  static const _userOwned = {'job', 'trust', 'category', 'related'};
+  static const _userOwned = {'job', 'trust', 'category', 'related', 'contactId'};
   static const _textFields = {'name', 'company'};
 
   Learned();

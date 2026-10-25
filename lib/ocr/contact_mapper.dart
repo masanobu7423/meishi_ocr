@@ -69,6 +69,89 @@ Contact toContact(CardFields f, {required DateTime scannedAt, String? source}) {
   );
 }
 
+/// The note lines toContact writes, by card key (the reverse of the list above).
+const _noteKeys = {
+  '区分': 'category', '職種': 'job', '信頼度': 'trust', '関係者': 'related', '法人番号': 'corpNo',
+  '建設業許可': 'constructionLicense', '宅建業免許': 'realEstateLicense', '資格': 'qualifications',
+};
+
+String? _first(Iterable<String?> xs) => xs.where((s) => s != null && s.trim().isNotEmpty).firstOrNull?.trim();
+
+bool _isFax(PhoneLabel l) => l == PhoneLabel.workFax || l == PhoneLabel.homeFax || l == PhoneLabel.otherFax;
+bool _isMobile(PhoneLabel l) => l == PhoneLabel.mobile || l == PhoneLabel.workMobile;
+
+/// An address-book contact as card fields: the reverse of [toContact], so a
+/// contact can become a card (import) or refresh one (pull). First value of
+/// each kind; the labelled note lines go back to their fields, the rest is
+/// the memo, and the `名刺取込` link line is dropped.
+CardFields fieldsFromContact(Contact c) {
+  final n = c.name;
+  final org = c.organizations.firstOrNull;
+  final adr = c.addresses.firstOrNull;
+  final f = CardFields()
+    ..contactId = c.id
+    ..name = _first([c.displayName, [n?.last, n?.first].whereType<String>().join(' ')])
+    ..nameKana = _first([[n?.phoneticLast, n?.phoneticFirst].whereType<String>().join(' ')])
+    ..company = _first([org?.name])
+    ..dept = _first([org?.departmentName])
+    ..title = _first([org?.jobTitle])
+    ..phone = _first(c.phones.where((p) => !_isMobile(p.label.label) && !_isFax(p.label.label)).map((p) => p.number))
+    ..mobile = _first(c.phones.where((p) => _isMobile(p.label.label)).map((p) => p.number))
+    ..fax = _first(c.phones.where((p) => _isFax(p.label.label)).map((p) => p.number))
+    ..email = _first(c.emails.map((e) => e.address))
+    ..url = _first(c.websites.map((w) => w.url))
+    ..postal = _first([adr?.postalCode])
+    ..address = _first([adr?.street]);
+  final memo = <String>[];
+  for (final line in c.notes.map((x) => x.note).join('\n').split('\n')) {
+    final t = line.trim();
+    if (t.isEmpty || t.startsWith('名刺取込')) continue;
+    final m = RegExp(r'^([^:：]+)[:：]\s*(.+)$').firstMatch(t);
+    final key = m == null ? null : _noteKeys[m.group(1)!.trim()];
+    if (key != null) {
+      f.set(key, m!.group(2)!.trim());
+    } else {
+      memo.add(t);
+    }
+  }
+  f.memo = memo.isEmpty ? null : memo.join('\n');
+  return f;
+}
+
+/// The card written onto an existing contact (push). Single-valued data
+/// (name, organization) is the card's; multi-valued lists keep the card's
+/// entries first and then whatever else the contact had (a second phone or
+/// e-mail added in Google survives); the note is the card's lines plus the
+/// contact's free lines the card does not carry. Identity (id, photo,
+/// platform data) stays.
+Contact applyCard(Contact existing, CardFields f, {required DateTime scannedAt}) {
+  final c = toContact(f, scannedAt: scannedAt);
+  List<T> union<T>(List<T> mine, List<T> theirs, String Function(T) key) {
+    final seen = mine.map(key).toSet();
+    return [...mine, for (final t in theirs) if (seen.add(key(t))) t];
+  }
+  final myNote = c.notes.single.note;
+  final myLines = myNote.split('\n').map((l) => l.trim()).toSet();
+  final extra = [
+    for (final line in existing.notes.map((n) => n.note).join('\n').split('\n'))
+      if (line.trim().isNotEmpty && !myLines.contains(line.trim()) && !_isOurLine(line.trim())) line.trim(),
+  ];
+  return existing.copyWith(
+    displayName: c.displayName,
+    name: c.name,
+    phones: union(c.phones, existing.phones, (p) => phoneDigits(p.number)),
+    emails: union(c.emails, existing.emails, (e) => e.address.toLowerCase()),
+    websites: union(c.websites, existing.websites, (w) => w.url.toLowerCase()),
+    addresses: union(c.addresses, existing.addresses, (a) => normalize(a.street ?? '').replaceAll(' ', '')),
+    organizations: c.organizations,
+    notes: [Note(note: [myNote, ...extra].join('\n'))],
+  );
+}
+
+/// A note line this app wrote: a labelled field or the 名刺取込 link line.
+bool _isOurLine(String t) =>
+    t.startsWith('名刺取込') || _noteKeys.keys.any((k) => t.startsWith('$k:') || t.startsWith('$k：'));
+
 /// Digits only, +81 folded to a leading 0, for comparing phone numbers.
 String phoneDigits(String s) {
   final d = s.replaceAll(RegExp(r'\D'), '');

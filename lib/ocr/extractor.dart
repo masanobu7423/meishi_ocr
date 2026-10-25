@@ -17,12 +17,15 @@ class CardFields {
   String? division, category, related;
   /// 職種 (pre-filled from dept/title, the user's to change) and 信頼度 1–5.
   String? job, trust;
+  /// The address-book contact this card is linked to (set when registered
+  /// or imported); pushes edits back and stops a second import.
+  String? contactId;
 
   static const keys = [
     'name', 'nameKana', 'nameRoman', 'company', 'dept', 'title',
     'phone', 'mobile', 'fax', 'email', 'url', 'postal', 'address', 'memo',
     'corpNo', 'constructionLicense', 'realEstateLicense', 'qualifications',
-    'division', 'category', 'related', 'job', 'trust',
+    'division', 'category', 'related', 'job', 'trust', 'contactId',
   ];
 
   void set(String key, String? v) {
@@ -50,6 +53,7 @@ class CardFields {
       case 'related': related = v;
       case 'job': job = v;
       case 'trust': trust = v;
+      case 'contactId': contactId = v;
     }
   }
 
@@ -77,6 +81,7 @@ class CardFields {
         'related': related,
         'job': job,
         'trust': trust,
+        'contactId': contactId,
       };
 }
 
