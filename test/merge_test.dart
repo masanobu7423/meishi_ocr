@@ -58,16 +58,45 @@ void main() {
     });
   });
 
+  group('mergedPreview', () {
+    test('shows what each field will hold after the merge', () {
+      final rows = contactDiff(_existing(), _card());
+      final byKey = {for (final r in rows) r.key: r};
+      // company differs: card chosen -> card value
+      expect(mergedPreview(byKey['company']!, useCard: true, keepExisting: true), '株式会社サンライズ');
+      expect(mergedPreview(byKey['company']!, useCard: false, keepExisting: true), '旧社');
+      // email differs, multi-valued: both kept when asked
+      expect(mergedPreview(byKey['email']!, useCard: true, keepExisting: true),
+          'old@example.com / taro.yamada@sunrise.co.jp');
+      expect(mergedPreview(byKey['email']!, useCard: true, keepExisting: false), 'taro.yamada@sunrise.co.jp');
+      // empty on the phone: card fills it regardless of keepExisting
+      expect(mergedPreview(byKey['phone']!, useCard: true, keepExisting: true), '03-1234-5678');
+      expect(mergedPreview(byKey['phone']!, useCard: false, keepExisting: true), '—');
+    });
+  });
+
   group('mergeContact', () {
+    test('a multi-valued field chosen without keeping the existing value replaces it', () {
+      final merged = mergeContact(_existing(), _card(),
+          useCard: {'email'}, keepExisting: const {}, scannedAt: DateTime(2026));
+      expect(merged.emails.map((e) => e.address).toList(), ['taro.yamada@sunrise.co.jp']);
+    });
+
+    test('a card value not chosen is not added, even for multi-valued fields', () {
+      final merged = mergeContact(_existing(), _card(), useCard: const {}, scannedAt: DateTime(2026));
+      expect(merged.phones.map((p) => p.number).toList(), ['+81 90 1234 5678']);
+      expect(merged.emails.map((e) => e.address).toList(), ['old@example.com']);
+    });
+
     test('keeps the existing id, takes card values where chosen, unions multi-values', () {
       final merged = mergeContact(_existing(), _card(),
-          useCard: {'company', 'title'}, scannedAt: DateTime(2026, 10, 25));
+          useCard: {'company', 'title', 'phone', 'email'}, scannedAt: DateTime(2026, 10, 25));
       expect(merged.id, '42');
       expect(merged.name!.last, '山田');
       expect(merged.organizations.single.name, '株式会社サンライズ');
       expect(merged.organizations.single.jobTitle, '部長');
       // phones: existing mobile kept once (same digits), card landline added
-      expect(merged.phones.map((p) => p.number).toList(), ['+81 90 1234 5678', '03-1234-5678']);
+      expect(merged.phones.map((p) => p.number), unorderedEquals(['+81 90 1234 5678', '03-1234-5678']));
       // emails: both kept, no duplicates
       expect(merged.emails.map((e) => e.address).toList(), ['old@example.com', 'taro.yamada@sunrise.co.jp']);
       // notes: old note kept, memo + scan line appended

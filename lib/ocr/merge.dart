@@ -78,18 +78,72 @@ List<DiffRow> contactDiff(Contact existing, CardFields card) {
   ];
 }
 
-/// The existing contact updated from the card. Single-valued fields take
-/// the card's value when the key is in [useCard] or the existing value is
-/// empty; multi-valued ones (phones, emails, websites, addresses) are the
-/// union without duplicates; notes are concatenated.
+/// Fields that can hold several values on a contact.
+const multiValued = {'phone', 'mobile', 'fax', 'email', 'url', 'address'};
+
+/// What a field will hold after the merge, for the preview line.
+/// [useCard]: take the card's value. [keepExisting]: for multi-valued fields,
+/// also keep the contact's current value (ignored for single-valued ones).
+String mergedPreview(DiffRow r, {required bool useCard, required bool keepExisting}) {
+  if (r.same) return r.existing ?? r.card ?? '—';
+  final values = <String>[];
+  if (multiValued.contains(r.key)) {
+    if ((!useCard || keepExisting) && r.existing != null) values.add(r.existing!);
+    if (useCard && r.card != null) values.add(r.card!);
+  } else {
+    final v = useCard ? (r.card ?? r.existing) : r.existing;
+    if (v != null) values.add(v);
+  }
+  return values.isEmpty ? '—' : values.join(' / ');
+}
+
+/// The existing contact updated from the card.
+/// - single-valued fields (name, company, dept, title): the card's value
+///   when the key is in [useCard] or the existing value is empty;
+/// - multi-valued fields: the card's value only when chosen; the existing
+///   value stays unless the key was dropped from [keepExisting]
+///   (default: keep everything); duplicates folded;
+/// - notes concatenated.
 Contact mergeContact(Contact existing, CardFields card,
-    {required Set<String> useCard, required DateTime scannedAt}) {
+    {required Set<String> useCard, Set<String>? keepExisting, required DateTime scannedAt}) {
+  final keep = keepExisting ?? multiValued;
   final ev = _existingValues(existing);
   final cv = card.toJson();
   String? pick(String key) =>
       (useCard.contains(key) || _blank(ev[key]) == null) ? _blank(cv[key]) ?? _blank(ev[key]) : _blank(ev[key]);
 
   final fromCard = toContact(card, scannedAt: scannedAt);
+
+  String phoneKind(Phone p) {
+    final l = p.label.label;
+    if (l == PhoneLabel.mobile || l == PhoneLabel.workMobile) return 'mobile';
+    if (l == PhoneLabel.workFax || l == PhoneLabel.homeFax || l == PhoneLabel.otherFax) return 'fax';
+    return 'phone';
+  }
+
+  /// Existing values of [kind] (unless dropped) + card values (if chosen), deduped.
+  List<T> combine<T>(String kind, List<T> ex, List<T> fromCardList, String Function(T) key) {
+    final out = <T>[];
+    final seen = <String>{};
+    void addAll(Iterable<T> xs) {
+      for (final x in xs) {
+        if (seen.add(key(x))) out.add(x);
+      }
+    }
+    if (!useCard.contains(kind) || keep.contains(kind)) addAll(ex);
+    if (useCard.contains(kind)) addAll(fromCardList);
+    return out;
+  }
+
+  final phones = <Phone>[
+    for (final kind in ['phone', 'mobile', 'fax'])
+      ...combine(
+        kind,
+        existing.phones.where((p) => phoneKind(p) == kind).toList(),
+        fromCard.phones.where((p) => phoneKind(p) == kind).toList(),
+        (p) => phoneDigits(p.number),
+      ),
+  ];
 
   final name = pick('name');
   final parts = (name ?? '').trim().split(RegExp(r'\s+'));
@@ -101,11 +155,6 @@ Contact mergeContact(Contact existing, CardFields card,
     departmentName: pick('dept'),
     jobTitle: pick('title'),
   );
-
-  List<T> union<T>(List<T> a, List<T> b, String Function(T) key) {
-    final seen = a.map(key).toSet();
-    return [...a, for (final x in b) if (seen.add(key(x))) x];
-  }
 
   final noteText = [
     ...existing.notes.map((n) => n.note),
@@ -121,10 +170,10 @@ Contact mergeContact(Contact existing, CardFields card,
             phoneticLast: fromCard.name?.phoneticLast ?? existing.name?.phoneticLast,
             phoneticFirst: fromCard.name?.phoneticFirst ?? existing.name?.phoneticFirst,
           ),
-    phones: union(existing.phones, fromCard.phones, (p) => phoneDigits(p.number)),
-    emails: union(existing.emails, fromCard.emails, (e) => e.address.toLowerCase()),
-    websites: union(existing.websites, fromCard.websites, (w) => w.url.toLowerCase()),
-    addresses: union(existing.addresses, fromCard.addresses, (a) => normalize(a.street ?? '')),
+    phones: phones,
+    emails: combine('email', existing.emails, fromCard.emails, (e) => e.address.toLowerCase()),
+    websites: combine('url', existing.websites, fromCard.websites, (w) => w.url.toLowerCase()),
+    addresses: combine('address', existing.addresses, fromCard.addresses, (a) => normalize(a.street ?? '')),
     organizations: [mergedOrg],
     notes: noteText.isEmpty ? const [] : [Note(note: noteText)],
   );

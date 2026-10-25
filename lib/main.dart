@@ -226,9 +226,23 @@ class _ScanPageState extends State<ScanPage> {
     switch (decision.action) {
       case DuplicateAction.merge:
         await _saveReviewed(quiet: true);
-        await FlutterContacts.update(
-            mergeContact(full, fields, useCard: decision.useCard, scannedAt: now));
-        if (mounted) _toast('既存の連絡先「${full.displayName ?? ''}」を更新しました');
+        final merged = mergeContact(full, fields,
+            useCard: decision.useCard, keepExisting: decision.keepExisting, scannedAt: now);
+        await FlutterContacts.update(merged);
+        if (!mounted) return true;
+        final changed = decision.useCard.length;
+        // Undo = write the pre-merge snapshot back; it is still in memory.
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('「${full.displayName ?? ''}」を更新しました（$changed 項目を名刺の値に）'),
+          duration: const Duration(seconds: 8),
+          action: SnackBarAction(
+            label: '元に戻す',
+            onPressed: () async {
+              await FlutterContacts.update(full);
+              if (mounted) _toast('統合前の内容に戻しました');
+            },
+          ),
+        ));
         return true;
       case DuplicateAction.separate:
         await _saveReviewed(quiet: true);
