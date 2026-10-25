@@ -1,0 +1,77 @@
+# Codemagic: Android AAB -> Play internal testing, iOS -> TestFlight.
+#
+# Nothing here runs from a Windows machine or from this repository's GitHub
+# Actions: both stores need credentials that live only in Codemagic
+# (environment groups below). Set them up once in the Codemagic UI:
+#
+#   group "play":      GCLOUD_SERVICE_ACCOUNT_CREDENTIALS (Play Console service account JSON)
+#   group "android_keystore": CM_KEYSTORE (base64 of upload-keystore.jks), CM_KEYSTORE_PASSWORD,
+#                      CM_KEY_ALIAS, CM_KEY_PASSWORD
+#   group "app_store": APP_STORE_CONNECT_ISSUER_ID, APP_STORE_CONNECT_KEY_IDENTIFIER,
+#                      APP_STORE_CONNECT_PRIVATE_KEY (p8), CERTIFICATE_PRIVATE_KEY
+#
+# The iOS bundle id must exist in App Store Connect first (jp.tobishoku.meishiOcr
+# is what `flutter create` generated; change it there or in ios/Runner.xcodeproj).
+
+workflows:
+  android-internal:
+    name: Android AAB to Play internal testing
+    max_build_duration: 60
+    instance_type: linux_x2
+    environment:
+      groups: [play, android_keystore]
+      flutter: stable
+      java: 17
+    scripts:
+      - name: Restore upload keystore
+        script: |
+          echo "$CM_KEYSTORE" | base64 --decode > "$CM_BUILD_DIR/android/app/upload-keystore.jks"
+          cat > "$CM_BUILD_DIR/android/key.properties" <<EOF
+          storeFile=upload-keystore.jks
+          storePassword=$CM_KEYSTORE_PASSWORD
+          keyAlias=$CM_KEY_ALIAS
+          keyPassword=$CM_KEY_PASSWORD
+          EOF
+      - flutter pub get
+      - flutter analyze
+      - flutter test
+      - flutter build appbundle --release
+    artifacts:
+      - build/app/outputs/bundle/release/*.aab
+    publishing:
+      google_play:
+        credentials: $GCLOUD_SERVICE_ACCOUNT_CREDENTIALS
+        track: internal
+        submit_as_draft: true   # a human presses "publish" in Play Console
+
+  ios-testflight:
+    name: iOS to TestFlight
+    max_build_duration: 90
+    instance_type: mac_mini_m2
+    integrations:
+      app_store_connect: meishi_ocr   # name of the App Store Connect API key in Codemagic
+    environment:
+      groups: [app_store]
+      flutter: stable
+      xcode: latest
+      cocoapods: default
+      ios_signing:
+        distribution_type: app_store
+        bundle_identifier: jp.tobishoku.meishiOcr
+    scripts:
+      - flutter pub get
+      - flutter analyze
+      - flutter test
+      - name: Pods
+        script: |
+          cd ios && pod install
+      - name: Build IPA
+        script: |
+          flutter build ipa --release --export-options-plist=/Users/builder/export_options.plist
+    artifacts:
+      - build/ios/ipa/*.ipa
+    publishing:
+      app_store_connect:
+        auth: integration
+        submit_to_testflight: true
+        beta_groups: [internal]   # create this TestFlight group first

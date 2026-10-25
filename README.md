@@ -76,6 +76,18 @@ adb pull /sdcard/Android/data/jp.tobishoku.meishi_ocr/files/golden ./pulled
 実機確認（P08 T）: 写真風名刺 → OCR → 登録で、姓名分割・ふりがな `ヤマダタロウ`・電話 3 件のラベル・メール・
 住所・組織・URL・メモが連絡先 DB に入ることを `adb shell content query` で確認済み。テスト用連絡先は削除済み。
 
+## リリース（内部テスト）
+
+- バージョンは `pubspec.yaml` の `version: <name>+<code>`。v0.2.0 (2) から Play 内部テスト用。
+- **Android AAB**: `flutter build appbundle --release`。署名は `android/key.properties`（git 外）が指す
+  `android/app/upload-keystore.jks`（git 外）。この 2 ファイルは必ずバックアップし、失くすと同じアプリとして更新できない。
+  `key.properties` が無い環境（CI）は debug 鍵にフォールバックするので、CI の成果物は Play に上げられない。
+  Play Console へのアップロードと公開ボタンは人が押す（`codemagic.yaml` の android-internal も `submit_as_draft`）。
+- **iOS TestFlight**: Windows からはビルドも提出もできない。`codemagic.yaml` の ios-testflight を Mac ランナーで動かす。
+  事前に App Store Connect でアプリと bundle id を作り、API キーを Codemagic に登録する。
+- リリース名とノート（JA/EN）は `docs/releases/v<version>.md`。
+- `git tag v0.2.0 && git push --tags` で GitHub Actions が APK（debug 鍵）を artifact に置く（配布用ではなく動作確認用）。
+
 ## 画面（利用者向け、`lib/main.dart` + `lib/card_form.dart` + `lib/theme.dart`）
 
 設計の約束は `DESIGN.md`（対象者・トーン・トークン・文言規則）。画面は 1 つで状態が 2 つ。
