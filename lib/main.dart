@@ -189,24 +189,23 @@ class ScanPageState extends State<ScanPage> {
       ),
     );
     if (paired == null) return;
-    // Shooting only: each scanner session is saved as 未確認 and the scanner
-    // opens again, until the user closes it. Review happens later from the
-    // list, so the form never takes over mid-burst.
-    var saved = 0, skipped = 0;
+    // Shooting only: every page goes straight into the inbox folder (no OCR,
+    // so the scanner reopens at once) until the user closes the scanner.
+    // 「まとめて取込」 reads the folder later, pairing <stem>_front / _back.
+    final (store, _, _) = await _ready;
+    var cards = 0;
     while (mounted) {
       final paths = await _captureMany();
       if (paths.isEmpty) break;
-      final files = [for (final p in paths) File(p)];
-      final stems = shotStems(DateTime.now(), pairPages(files, paired: paired).length);
-      final (s, k) = await _importFiles(files, stems: stems, paired: paired, review: false);
-      saved += s;
-      skipped += k;
+      final stems = shotStems(DateTime.now(), paired ? (paths.length + 1) ~/ 2 : paths.length);
+      for (final (i, p) in paths.indexed) {
+        final name = paired ? '${stems[i ~/ 2]}_${i.isEven ? "front" : "back"}' : stems[i];
+        await store.stashCapture(File(p), name);
+      }
+      cards += stems.length;
     }
-    if (!mounted || saved + skipped == 0) return;
-    final unread = skipped == 0 ? '' : '。$skipped 枚は文字を読み取れませんでした';
-    _toast(saved == 0
-        ? '読み取れた名刺がありません$unread'
-        : '$saved 枚を未確認として保存しました$unread。一覧の「未確認」から 1 枚ずつ確認して登録できます');
+    if (!mounted || cards == 0) return;
+    _toast('$cards 枚を取込フォルダに保存しました。「まとめて取込」で読み取って、1 枚ずつ確認できます');
   }
 
   /// Camera or album for the front (true) or back side.
@@ -463,56 +462,49 @@ class ScanPageState extends State<ScanPage> {
       _toast('取込フォルダに画像がありません（${(await store.inbox()).path}）');
       return;
     }
-    await _importFiles(files);
+    await _importCards(pairInboxFiles(files));
   }
 
-  /// OCR every file (front, or front+back pairs when [paired]), save each
-  /// card as 未確認 with the extractor's guess, and queue it for review now
-  /// or later from the list. [stems] default to the file names.
-  /// Returns (saved, unreadable). With [review] the batch is queued and the
-  /// first card shown; without it the screen is left as it is so the user
-  /// can keep shooting and review later from the list.
-  Future<(int, int)> _importFiles(List<File> files,
-      {List<String>? stems, bool paired = false, bool review = true}) async {
+  /// OCR every inbox card (front, plus back when present), save it as 未確認
+  /// with the extractor's guess, remove its files from the inbox, and queue
+  /// it for review now or later from the list. Unreadable ones stay in the
+  /// folder so they can be retaken.
+  Future<void> _importCards(List<InboxCard> cards) async {
     final (store, ocr, learned) = await _ready;
-    if (review) _queue.clear();
+    _queue.clear();
     var saved = 0, levelled = 0, skipped = 0;
-    final pairs = pairPages(files, paired: paired);
-    for (final (i, p) in pairs.indexed) {
-      final f = p.front;
-      final stem = stems?[i] ?? f.uri.pathSegments.last.replaceAll(RegExp(r'\.\w+$'), '');
-      setState(() => _progress = '読み取り中 ${i + 1}/${pairs.length}');
-      final r = await ocr.recognize(f.path, front: true);
+    for (final (i, c) in cards.indexed) {
+      setState(() => _progress = '読み取り中 ${i + 1}/${cards.length}');
+      final r = await ocr.recognize(c.front.path, front: true);
       if (r.lines.isEmpty) {
         skipped++;
         continue;
       }
       if (r.deskewedBy != null) levelled++;
-      final back = p.back == null ? null : await ocr.recognize(p.back!.path, front: false);
+      final back = c.back == null ? null : await ocr.recognize(c.back!.path, front: false);
       final guess = extract(r.lines, back: back?.lines ?? const [], learned: learned);
       await store.saveCard(
-          stem: stem,
+          stem: c.stem,
           front: r.lines,
           frontRaw: r.rawLines,
           back: back?.lines ?? const [],
           expected: guess.toJson(),
-          frontImage: f,
-          backImage: p.back,
+          frontImage: c.front,
+          backImage: c.back,
           status: CardStatus.unreviewed);
+      await c.front.delete(); // the vault now holds the copies
+      await c.back?.delete();
       saved++;
-      if (review) _queue.items.add(stem);
+      _queue.items.add(c.stem);
     }
-    if (review) await _showQueued();
+    await _showQueued();
     if (mounted) setState(() => _progress = null);
     widget.onSaved();
-    if (review) {
-      final unread = skipped == 0 ? '' : '。$skipped 枚は文字を読み取れませんでした。撮り直してください';
-      _toast(saved == 0
-          ? '読み取れた名刺がありません$unread'
-          : '$saved 枚を取り込みました${levelled == 0 ? "" : "（$levelled 枚は傾きを補正）"}$unread。'
-              '1 枚ずつ確認して登録してください。あとで一覧の「未確認」からも続けられます');
-    }
-    return (saved, skipped);
+    final unread = skipped == 0 ? '' : '。$skipped 枚は文字を読み取れず、取込フォルダに残しました';
+    _toast(saved == 0
+        ? '読み取れた名刺がありません$unread'
+        : '$saved 枚を取り込みました${levelled == 0 ? "" : "（$levelled 枚は傾きを補正）"}$unread。'
+            '1 枚ずつ確認して登録してください。あとで一覧の「未確認」からも続けられます');
   }
 
   /// Show the queue's current card from the store (saved values and

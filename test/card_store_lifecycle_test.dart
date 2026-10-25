@@ -145,6 +145,14 @@ void main() {
     expect(await store.setStatus('missing', CardStatus.registered), isFalse);
   });
 
+  test('stashCapture copies a burst page into the inbox under the given name', () async {
+    final src = await File('${tmp.path}/cache_page.jpg').writeAsBytes([9, 8, 7]);
+    final f = await store.stashCapture(src, 'shot_1_front');
+    expect(f.path.replaceAll('\\', '/'), endsWith('/inbox/shot_1_front.jpg'));
+    expect(await f.readAsBytes(), [9, 8, 7]);
+    expect((await store.inboxImages()).map((x) => x.uri.pathSegments.last), ['shot_1_front.jpg']);
+  });
+
   test('backups lists zip files newest first', () async {
     expect(await store.backups(), isEmpty);
     await store.backup(now: DateTime(2026, 10, 24, 8, 0));

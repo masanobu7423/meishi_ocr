@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:meishi_ocr/ocr/review_queue.dart';
 
@@ -41,10 +43,21 @@ void main() {
     expect(q.current, isNull);
   });
 
-  test('pairPages pairs front/back in order; an odd last page has no back', () {
-    expect(pairPages(['a', 'b', 'c'], paired: true), [(front: 'a', back: 'b'), (front: 'c', back: null)]);
-    expect(pairPages(['a', 'b'], paired: false), [(front: 'a', back: null), (front: 'b', back: null)]);
-    expect(pairPages(<String>[], paired: true), isEmpty);
+  test('pairInboxFiles joins *_front/*_back by stem; other files are fronts', () {
+    final files = [
+      File('/in/shot_1_back.jpg'),
+      File('/in/shot_1_front.jpg'),
+      File('/in/k01.png'),
+      File('/in/shot_2_front.jpg'),
+      File('/in/orphan_back.jpg'),
+    ];
+    final pairs = pairInboxFiles(files);
+    expect(pairs.map((p) => (p.stem, p.front.path, p.back?.path)), [
+      ('k01', '/in/k01.png', null),
+      ('orphan', '/in/orphan_back.jpg', null),
+      ('shot_1', '/in/shot_1_front.jpg', '/in/shot_1_back.jpg'),
+      ('shot_2', '/in/shot_2_front.jpg', null),
+    ]);
   });
 
   test('shotStems names a burst of captures uniquely and file-safely', () {

@@ -31,6 +31,13 @@ class CardStore {
   /// readable by the app on Android 11+ (scoped storage ownership).
   Future<Directory> inbox() => _dir('inbox').create(recursive: true);
 
+  /// Copies a scanner page into the inbox as `<name>.<ext>`, to be read
+  /// later by the folder import.
+  Future<File> stashCapture(File src, String name) async {
+    final ext = src.path.split('.').last.toLowerCase();
+    return src.copy('${(await inbox()).path}/$name.$ext');
+  }
+
   Future<List<File>> inboxImages() async => (await inbox())
       .listSync()
       .whereType<File>()

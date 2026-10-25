@@ -1,3 +1,5 @@
+import 'dart:io';
+
 /// Stems for a burst of [count] captures taken at [now]:
 /// `shot_20261025-181207042_1`, `_2`, ... (millisecond stamp so two bursts
 /// never share a stem; no characters a file name rejects).
@@ -8,15 +10,32 @@ List<String> shotStems(DateTime now, int count) {
   return [for (var i = 1; i <= count; i++) 'shot_${t}_$i'];
 }
 
-/// Pages from one burst grouped into cards: alternating front / back when
-/// [paired], else every page is a front. An odd trailing page has no back.
-List<({T front, T? back})> pairPages<T>(List<T> pages, {required bool paired}) => [
-      if (paired)
-        for (var i = 0; i < pages.length; i += 2)
-          (front: pages[i], back: i + 1 < pages.length ? pages[i + 1] : null)
-      else
-        for (final p in pages) (front: p, back: null),
-    ];
+/// One card waiting in the inbox folder: its stem and image file(s).
+typedef InboxCard = ({String stem, File front, File? back});
+
+/// Inbox files grouped into cards, sorted by stem: `<stem>_front.*` and
+/// `<stem>_back.*` belong together (burst captures); any other file is a
+/// front on its own, as is a back without a front.
+List<InboxCard> pairInboxFiles(List<File> files) {
+  String base(File f) => f.uri.pathSegments.last.replaceAll(RegExp(r'\.\w+$'), '');
+  final fronts = <String, File>{}, backs = <String, File>{};
+  for (final f in files) {
+    final b = base(f);
+    if (b.endsWith('_back')) {
+      backs[b.substring(0, b.length - 5)] = f;
+    } else {
+      fronts[b.endsWith('_front') ? b.substring(0, b.length - 6) : b] = f;
+    }
+  }
+  for (final e in backs.entries) {
+    fronts.putIfAbsent(e.key, () => e.value); // a lone back is still a card
+  }
+  final stems = fronts.keys.toList()..sort();
+  return [
+    for (final s in stems)
+      (stem: s, front: fronts[s]!, back: fronts[s] == backs[s] ? null : backs[s]),
+  ];
+}
 
 /// Cursor over a batch of imported cards for the review screen.
 class ReviewQueue<T> {
