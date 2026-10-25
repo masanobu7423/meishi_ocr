@@ -72,8 +72,8 @@ class _HomeShellState extends State<HomeShell> {
     if (_accountResolved) return _account;
     if (!await FlutterContacts.permissions.has(PermissionType.read)) return null;
     final (store, _) = await _ready;
-    final saved = (await store.loadSettings())['accountId'] as String?;
-    _account = preferredAccount(await FlutterContacts.accounts.getAll(), savedId: saved);
+    final saved = (await store.loadSettings())['accountKey'] as String?;
+    _account = preferredAccount(await FlutterContacts.accounts.getAll(), savedKey: saved);
     _accountResolved = true;
     if (mounted) setState(() {});
     return _account;
@@ -91,8 +91,9 @@ class _HomeShellState extends State<HomeShell> {
       _toast('連絡先の権限がありません。端末の設定でこのアプリに連絡先を許可してください');
       return;
     }
-    final accounts = await FlutterContacts.accounts.getAll();
+    final accounts = sortedAccounts(await FlutterContacts.accounts.getAll());
     if (!mounted) return;
+    final current = _account == null ? null : accountKey(_account!);
     final picked = await showDialog<Account?>(
       context: context,
       builder: (c) => SimpleDialog(
@@ -100,8 +101,8 @@ class _HomeShellState extends State<HomeShell> {
         children: [
           for (final a in accounts)
             ListTile(
-              leading: Icon(a.id == _account?.id ? Icons.radio_button_checked : Icons.radio_button_off,
-                  semanticLabel: a.id == _account?.id ? '選択中' : null),
+              leading: Icon(accountKey(a) == current ? Icons.radio_button_checked : Icons.radio_button_off,
+                  semanticLabel: accountKey(a) == current ? '選択中' : null),
               title: Text(a.name),
               subtitle: Text(isGoogle(a) ? 'Google（自動で同期されます）' : a.type),
               onTap: () => Navigator.pop(c, a),
@@ -117,7 +118,7 @@ class _HomeShellState extends State<HomeShell> {
     if (picked == null) return;
     final (store, _) = await _ready;
     final settings = await store.loadSettings();
-    await store.saveSettings({...settings, 'accountId': picked.id});
+    await store.saveSettings({...settings, 'accountKey': accountKey(picked)});
     setState(() {
       _account = picked;
       _accountResolved = true;

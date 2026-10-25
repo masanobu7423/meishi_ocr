@@ -11,19 +11,21 @@ void main() {
   ];
 
   group('preferredAccount', () {
-    test('uses the saved account id when it still exists', () {
-      expect(preferredAccount(accounts, savedId: 'g2')?.id, 'g2');
+    test('uses the saved account (by type|name, ids are not unique everywhere)', () {
+      expect(preferredAccount(accounts, savedKey: 'com.google|work@gmail.com')?.id, 'g2');
+      expect(accountKey(accounts[2]), 'com.google|work@gmail.com');
     });
     test('falls back to the first Google account', () {
       expect(preferredAccount(accounts)?.id, 'g1');
-      expect(preferredAccount(accounts, savedId: 'gone')?.id, 'g1');
+      expect(preferredAccount(accounts, savedKey: 'gone|x')?.id, 'g1');
     });
     test('null (device default) when there is no Google account', () {
       expect(preferredAccount([accounts.first]), isNull);
     });
-    test('isGoogle tells the two kinds apart', () {
+    test('isGoogle tells the two kinds apart; sortedAccounts puts Google first', () {
       expect(isGoogle(accounts[1]), isTrue);
       expect(isGoogle(accounts[0]), isFalse);
+      expect(sortedAccounts(accounts).map((a) => a.id), ['g1', 'g2', 'local']);
     });
   });
 

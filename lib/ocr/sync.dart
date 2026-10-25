@@ -10,11 +10,19 @@ import 'extractor.dart';
 
 bool isGoogle(Account a) => a.type == 'com.google';
 
+/// Stable identity for persisting the choice. The plugin's `id` is not
+/// unique on every device (one phone returned the same id for all accounts).
+String accountKey(Account a) => '${a.type}|${a.name}';
+
+/// Google accounts first, then the rest in the order the device gave.
+List<Account> sortedAccounts(List<Account> accounts) =>
+    [...accounts.where(isGoogle), ...accounts.where((a) => !isGoogle(a))];
+
 /// The account to register into: the one the user chose (if it still
 /// exists), else the first Google account, else null = device default.
-Account? preferredAccount(List<Account> accounts, {String? savedId}) {
-  if (savedId != null) {
-    final saved = accounts.where((a) => a.id == savedId);
+Account? preferredAccount(List<Account> accounts, {String? savedKey}) {
+  if (savedKey != null) {
+    final saved = accounts.where((a) => accountKey(a) == savedKey);
     if (saved.isNotEmpty) return saved.first;
   }
   final google = accounts.where(isGoogle);
