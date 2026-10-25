@@ -1,6 +1,9 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
     <uses-permission android:name="android.permission.READ_CONTACTS" />
     <uses-permission android:name="android.permission.WRITE_CONTACTS" />
+    <!-- the camera plugin declares RECORD_AUDIO for video; this app never records audio -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" tools:node="remove" />
     <!-- url_launcher: which external apps may be opened (phone, mail, web, map) -->
     <queries>
         <intent><action android:name="android.intent.action.DIAL" /><data android:scheme="tel" /></intent>
