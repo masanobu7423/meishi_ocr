@@ -170,8 +170,11 @@ class AutoShutter {
   bool _armed = true;
   DateTime? _lastShot;
 
+  // The corners sit on the 8 px sampling grid (1/90 of the height at 720p),
+  // so a still card still "moves" by a grid step now and then: 0.02 was too
+  // tight on the Galaxy S25 (log: 0.011-0.013 while still), 0.04 is not.
   AutoShutter({
-    this.maxShift = 0.02,
+    this.maxShift = 0.04,
     this.stableFrames = 6,
     this.cooldown = const Duration(milliseconds: 1500),
   });
