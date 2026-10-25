@@ -5,12 +5,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_contacts/flutter_contacts.dart';
 import 'package:google_mlkit_document_scanner/google_mlkit_document_scanner.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:path_provider/path_provider.dart';
 
+import 'app_shell.dart';
 import 'capture_screen.dart';
 import 'card_form.dart';
 import 'duplicate_screen.dart';
-import 'history_screen.dart';
 import 'ocr/card_store.dart';
 import 'ocr/contact_mapper.dart';
 import 'ocr/extractor.dart';
@@ -24,51 +23,51 @@ import 'theme.dart';
 
 // Thin UI over three parts: OcrPipeline (image -> lines, tilt correction),
 // extractor (lines -> fields, with learned corrections), CardStore (golden
-// JSON, Obsidian vault, images, vCard, logs). This file holds screen state
-// and button handlers only. Look and copy follow DESIGN.md.
+// JSON, Obsidian vault, images, vCard, logs). HomeShell owns the tabs; this
+// file is the スキャン tab: screen state and button handlers only. Look and
+// copy follow DESIGN.md.
 void main() => runApp(MaterialApp(
       title: '名刺スキャン',
       theme: appTheme(),
       darkTheme: appTheme(brightness: Brightness.dark),
-      home: const ScanPage(),
+      home: const HomeShell(),
     ));
 
 /// One imported card waiting for review.
 typedef QueuedCard = ({String stem, List<OcrLine> front, String imagePath});
 
 class ScanPage extends StatefulWidget {
-  const ScanPage({super.key});
+  final Future<(CardStore, OcrPipeline)> ready;
+
+  /// Called after anything was written to the store, so lists can refresh.
+  final VoidCallback onSaved;
+  const ScanPage({super.key, required this.ready, required this.onSaved});
+
   @override
-  State<ScanPage> createState() => _ScanPageState();
+  State<ScanPage> createState() => ScanPageState();
 }
 
-class _ScanPageState extends State<ScanPage> {
+class ScanPageState extends State<ScanPage> {
   final _picker = ImagePicker();
   final _ctl = {for (final k in CardFields.keys) k: TextEditingController()};
   final _queue = ReviewQueue<QueuedCard>();
-  late final Future<(CardStore, OcrPipeline)> _ready = _init();
 
   List<OcrLine>? _front, _back;
   String? _frontPath, _backPath;
-  Learned _learned = Learned();
+  Learned? _learned;
   CardFields? _fields;
   String? _source;
   String? _progress; // non-null while OCR runs
   String? _error; // what happened + what to do
 
-  /// Android: `/sdcard/Android/data/<pkg>/files` (reachable with plain adb pull
-  /// and the Files app). Elsewhere: app documents.
-  Future<(CardStore, OcrPipeline)> _init() async {
-    final dir = (Platform.isAndroid ? await getExternalStorageDirectory() : null) ??
-        await getApplicationDocumentsDirectory();
-    final store = CardStore(dir);
-    _learned = await store.loadLearned();
-    return (store, OcrPipeline(store));
+  Future<(CardStore, OcrPipeline, Learned)> get _ready async {
+    final (store, ocr) = await widget.ready;
+    _learned ??= await store.loadLearned();
+    return (store, ocr, _learned!);
   }
 
   @override
   void dispose() {
-    _ready.then((r) => r.$2.dispose());
     for (final c in _ctl.values) {
       c.dispose();
     }
@@ -110,7 +109,7 @@ class _ScanPageState extends State<ScanPage> {
         final path = r.images?.firstOrNull;
         if (path != null) return path;
       } catch (e) {
-        final (store, _) = await _ready;
+        final (store, _, _) = await _ready;
         await store.appendError('document_scanner', e);
       } finally {
         scanner.close();
@@ -121,8 +120,9 @@ class _ScanPageState extends State<ScanPage> {
         context, MaterialPageRoute(builder: (_) => CaptureScreen(label: label)));
   }
 
-  Future<void> _shoot(bool front, ImageSource source) async {
-    final (store, ocr) = await _ready;
+  /// Camera or album for the front (true) or back side.
+  Future<void> shoot(bool front, ImageSource source) async {
+    final (_, ocr, _) = await _ready;
     if (ocr.busy) return;
     final path = source == ImageSource.camera
         ? await _capture(front ? '表' : '裏')
@@ -153,12 +153,37 @@ class _ScanPageState extends State<ScanPage> {
     });
   }
 
+  /// A saved card chosen on the home / search / list tab: show it with its
+  /// saved values (not a fresh extraction) and images.
+  Future<void> loadStoredCard(CardSummary picked) async {
+    final (store, _, _) = await _ready;
+    final card = await store.loadCard(picked.stem);
+    if (!mounted) return;
+    if (card == null) {
+      setState(() => _error = '「${picked.name}」の読み取りデータが見つかりません。ノートは残っています');
+      return;
+    }
+    setState(() {
+      _queue.clear();
+      _front = card.front;
+      _back = card.back.isEmpty ? null : card.back;
+      _frontPath = card.frontImage?.path;
+      _backPath = card.backImage?.path;
+      _source = '${card.stem}.json';
+      _error = null;
+      _fields = fieldsFromJson(card.expected);
+      for (final k in CardFields.keys) {
+        _ctl[k]!.text = card.expected[k] ?? '';
+      }
+    });
+  }
+
   // ---- save / register -----------------------------------------------------
 
   /// Save the reviewed fields; whatever the user changed against the
   /// extractor's guess is learned for the next card and logged.
   Future<void> _saveReviewed({bool quiet = false}) async {
-    final (store, _) = await _ready;
+    final (store, _, learned) = await _ready;
     final stem = _source?.replaceAll('.json', '') ??
         DateTime.now().toIso8601String().replaceAll(RegExp(r'[:.]'), '-');
     final guess = _fields?.toJson() ?? const <String, String?>{};
@@ -171,16 +196,17 @@ class _ScanPageState extends State<ScanPage> {
         frontImage: _frontPath == null ? null : File(_frontPath!),
         backImage: _backPath == null ? null : File(_backPath!));
     _source = f.uri.pathSegments.last;
-    final before = jsonEncode(_learned.toJson());
-    _learned.learn(guess: guess, corrected: corrected, lines: [..._front!, ...?_back]);
-    final learnedSomething = jsonEncode(_learned.toJson()) != before;
-    if (learnedSomething) await store.saveLearned(_learned);
+    final before = jsonEncode(learned.toJson());
+    learned.learn(guess: guess, corrected: corrected, lines: [..._front!, ...?_back]);
+    final learnedSomething = jsonEncode(learned.toJson()) != before;
+    if (learnedSomething) await store.saveLearned(learned);
     await store.appendCorrection(stem, guess, corrected);
+    widget.onSaved();
     if (!quiet && mounted) _toast('保存しました${learnedSomething ? "。修正を次回から反映します" : ""}');
   }
 
-  /// Register the reviewed card in the device address book. Phone/email
-  /// matches against existing contacts are shown first; no silent merge.
+  /// Register the reviewed card in the device address book. A phone/email
+  /// match against an existing contact opens the side-by-side screen.
   Future<void> _registerContact() async {
     final fields = fieldsFromJson(_reviewed());
     if (fields.name == null) {
@@ -210,8 +236,7 @@ class _ScanPageState extends State<ScanPage> {
     if (_queue.current != null && _queue.next()) setState(_showQueued);
   }
 
-  /// Side-by-side review against the matching contact. Returns true when
-  /// something was written (merge / separate / replace), false otherwise.
+  /// Returns true when something was written (merge / separate / replace).
   Future<bool> _resolveDuplicate(String id, CardFields fields) async {
     final full = await FlutterContacts.get(id, properties: ContactProperties.all);
     if (full == null) return false;
@@ -266,8 +291,8 @@ class _ScanPageState extends State<ScanPage> {
 
   /// Every image in inbox is OCR'd as a front side, saved with the
   /// extractor's guess, and queued on screen for review / registration.
-  Future<void> _importInbox() async {
-    final (store, ocr) = await _ready;
+  Future<void> importInbox() async {
+    final (store, ocr, _) = await _ready;
     if (ocr.busy) return;
     final files = await store.inboxImages();
     if (files.isEmpty) {
@@ -296,6 +321,7 @@ class _ScanPageState extends State<ScanPage> {
     }
     _showQueued();
     setState(() => _progress = null);
+    widget.onSaved();
     _toast('${_queue.items.length} 枚を取り込みました'
         '${levelled == 0 ? "" : "（$levelled 枚は傾きを補正）"}。1 枚ずつ確認して登録してください');
   }
@@ -316,47 +342,6 @@ class _ScanPageState extends State<ScanPage> {
     if (forward ? _queue.next() : _queue.prev()) setState(_showQueued);
   }
 
-  Future<void> _exportVcard() async {
-    final (store, _) = await _ready;
-    final (file, n) = await store.exportVcard();
-    _toast('$n 件を vCard に書き出しました（${file.path}）');
-  }
-
-  Future<void> _backup() async {
-    final (store, _) = await _ready;
-    final (file, n) = await store.backup();
-    _toast('$n ファイルをバックアップしました（${file.path}）');
-  }
-
-  /// History: pick a saved card and bring it back into the review screen
-  /// with its saved values (not a fresh extraction), images included.
-  Future<void> _openHistory() async {
-    final (store, _) = await _ready;
-    final cards = cardSummaries(await store.notes());
-    if (!mounted) return;
-    final picked = await Navigator.push<CardSummary>(
-        context, MaterialPageRoute(builder: (_) => HistoryScreen(cards: cards, vault: store.vaultDir)));
-    if (picked == null) return;
-    final card = await store.loadCard(picked.stem);
-    if (card == null) {
-      setState(() => _error = '「${picked.name}」の読み取りデータが見つかりません。ノートは残っています');
-      return;
-    }
-    setState(() {
-      _queue.clear();
-      _front = card.front;
-      _back = card.back.isEmpty ? null : card.back;
-      _frontPath = card.frontImage?.path;
-      _backPath = card.backImage?.path;
-      _source = '${card.stem}.json';
-      _error = null;
-      _fields = fieldsFromJson(card.expected);
-      for (final k in CardFields.keys) {
-        _ctl[k]!.text = card.expected[k] ?? '';
-      }
-    });
-  }
-
   // ---- UI ------------------------------------------------------------------
 
   @override
@@ -364,29 +349,6 @@ class _ScanPageState extends State<ScanPage> {
     final scheme = Theme.of(context).colorScheme;
     final hasCard = _front != null;
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('名刺スキャン'),
-        actions: [
-          IconButton(
-            tooltip: '保存した名刺を探す',
-            icon: const Icon(Icons.history),
-            onPressed: _openHistory,
-          ),
-          IconButton(
-            tooltip: 'フォルダの画像をまとめて取り込む',
-            icon: const Icon(Icons.folder_open),
-            onPressed: _progress == null ? _importInbox : null,
-          ),
-          PopupMenuButton<String>(
-            tooltip: 'その他',
-            onSelected: (v) => v == 'vcard' ? _exportVcard() : _backup(),
-            itemBuilder: (_) => const [
-              PopupMenuItem(value: 'vcard', child: Text('全件を vCard に書き出す')),
-              PopupMenuItem(value: 'backup', child: Text('バックアップを作る')),
-            ],
-          ),
-        ],
-      ),
       body: Column(
         children: [
           if (_progress != null)
@@ -409,8 +371,8 @@ class _ScanPageState extends State<ScanPage> {
           if (!hasCard)
             Expanded(
               child: _EmptyState(
-                onShoot: () => _shoot(true, ImageSource.camera),
-                onAlbum: () => _shoot(true, ImageSource.gallery),
+                onShoot: () => shoot(true, ImageSource.camera),
+                onAlbum: () => shoot(true, ImageSource.gallery),
               ),
             )
           else ...[
@@ -421,8 +383,8 @@ class _ScanPageState extends State<ScanPage> {
               queueLabel: _queue.current == null ? null : '${_queue.label} 枚目を確認中',
               onPrev: () => _move(false),
               onNext: () => _move(true),
-              onBackShoot: () => _shoot(false, ImageSource.camera),
-              onBackAlbum: () => _shoot(false, ImageSource.gallery),
+              onBackShoot: () => shoot(false, ImageSource.camera),
+              onBackAlbum: () => shoot(false, ImageSource.gallery),
             ),
             Expanded(
               child: CardForm(
@@ -445,7 +407,7 @@ class _ScanPageState extends State<ScanPage> {
                     IconButton.outlined(
                       tooltip: '次の名刺を撮影',
                       icon: const Icon(Icons.add_a_photo_outlined),
-                      onPressed: () => _shoot(true, ImageSource.camera),
+                      onPressed: () => shoot(true, ImageSource.camera),
                     ),
                     const SizedBox(width: AppSpace.unit),
                     Expanded(
@@ -472,7 +434,7 @@ class _ScanPageState extends State<ScanPage> {
   }
 }
 
-/// First screen: nothing scanned yet.
+/// Scan tab with nothing scanned yet.
 class _EmptyState extends StatelessWidget {
   final VoidCallback onShoot, onAlbum;
   const _EmptyState({required this.onShoot, required this.onAlbum});

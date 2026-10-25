@@ -88,9 +88,22 @@ adb pull /sdcard/Android/data/jp.tobishoku.meishi_ocr/files/golden ./pulled
 - リリース名とノート（JA/EN）は `docs/releases/v<version>.md`。
 - `git tag v0.2.0 && git push --tags` で GitHub Actions が APK（debug 鍵）を artifact に置く（配布用ではなく動作確認用）。
 
-## 画面（利用者向け、`lib/main.dart` + `lib/card_form.dart` + `lib/theme.dart`）
+## 画面構成（`lib/app_shell.dart`）
 
-設計の約束は `DESIGN.md`（対象者・トーン・トークン・文言規則）。画面は 1 つで状態が 2 つ。
+下部タブ 4 つ。ホーム / スキャン / 検索 / 一覧。データは vault のノートから読み、スキャンで保存すると他タブが更新される。
+
+| タブ | ファイル | 内容 |
+|---|---|---|
+| ホーム | `lib/home_screen.dart` | 保存枚数・今月の枚数、名刺を撮影 / アルバムから / まとめて取込、最近の 5 枚（タップでスキャン画面に開く）、すべて見る |
+| スキャン | `lib/main.dart` | 下記の確認画面。他タブから名刺を開くとここに表示される |
+| 検索 | `lib/card_list.dart` `SearchScreen` | 氏名・会社・役職・メモで絞り込み（大小・全角半角・かな種別を無視） |
+| 一覧 | `lib/card_list.dart` `ListScreen` | 新しい順 / 会社順 / 氏名順の切替 |
+
+vCard 書き出しとバックアップは右上メニュー。`test/card_list_test.dart` と `test/home_screen_test.dart` が並び順・絞り込み・ホームの集計を固定。
+
+## スキャン画面（`lib/main.dart` + `lib/card_form.dart` + `lib/theme.dart`）
+
+設計の約束は `DESIGN.md`（対象者・トーン・トークン・文言規則）。状態は 2 つ。
 
 - **空状態**: 「名刺を撮影するか、アルバムから選んでください」と大きな 2 ボタン。通信を使わない旨を 1 行。
 - **確認状態**: 上に名刺写真（表、裏は未撮影なら撮影/アルバムボタン）、一括取込中は「2/6 枚目を確認中」と前後ボタン。

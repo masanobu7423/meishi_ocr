@@ -31,6 +31,12 @@ Source of truth in code: `lib/theme.dart`. A value not in this table does not ap
 
 TODO(owner): seed color は仮。ブランド色があれば差し替える。
 
+## 2b. Structure
+
+- 下部タブ 4 つ（ホーム / スキャン / 検索 / 一覧）、`NavigationBar`。タブ間で状態を保つため `IndexedStack`。
+- ホームは「件数 2 つ → 主要操作 3 つ → 最近の 5 枚」の順。他タブで名刺を選ぶとスキャンタブに開く。
+- 右上メニューは全タブ共通（vCard 書き出し、バックアップ）。スキャンタブだけ「まとめて取込」アイコンが付く。
+
 ## 3. Components and states
 
 - Button roles → widget: primary = `FilledButton`（電話帳に登録）, secondary = `OutlinedButton` / `FilledButton.tonal`（保存、撮影）, destructive = なし（削除機能なし）
