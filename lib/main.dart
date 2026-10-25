@@ -39,6 +39,8 @@ void main() => runApp(MaterialApp(
 
 /// One imported card waiting for review.
 
+enum _BurstChoice { shoot, blank, end }
+
 class ScanPage extends StatefulWidget {
   final Future<(CardStore, OcrPipeline)> ready;
 
@@ -173,23 +175,110 @@ class ScanPageState extends State<ScanPage> {
     );
     if (paired == null || !mounted) return;
     final session = BurstSession(paired: paired);
-    await Navigator.push<BurstSession>(
-      context,
-      MaterialPageRoute(
-        builder: (_) => CaptureScreen(
-          label: '',
-          burst: session,
-          onPage: (path, name) => store.stashCapture(File(path), name),
-          onBlank: store.stashBlankBack,
-          statsLog: File('${store.root.path}/log/shutter.txt'),
-        ),
-      ),
-    );
+    // Same scanner as 「表を撮影」 (card-sized tracking, perspective fix,
+    // auto-capture), one page per session. Google's screen takes no buttons,
+    // so the side, 白地で保管 and 撮影を終了 live in a prompt between pages.
+    var sessions = 0;
+    while (mounted) {
+      final choice = await _burstPrompt(session);
+      if (choice == null || choice == _BurstChoice.end) break;
+      if (choice == _BurstChoice.blank) {
+        final stem = session.blankStem();
+        if (stem != null) await store.stashBlankBack(stem);
+        continue;
+      }
+      if (sessions++ > 0) await _waitForScannerToClose();
+      final paths = await _captureOnePage();
+      if (paths == null) {
+        // The scanner is unavailable on this device: the in-app camera takes over.
+        if (!mounted) return;
+        await Navigator.push<BurstSession>(
+          context,
+          MaterialPageRoute(
+            builder: (_) => CaptureScreen(
+              label: '',
+              burst: session,
+              onPage: (path, name) => store.stashCapture(File(path), name),
+              onBlank: store.stashBlankBack,
+              statsLog: File('${store.root.path}/log/shutter.txt'),
+            ),
+          ),
+        );
+        break;
+      }
+      if (paths.isEmpty) continue; // closed the scanner: back to the prompt
+      await store.stashCapture(File(paths.first), session.nextName(DateTime.now()));
+    }
     final summary = session.summary;
     if (!mounted || summary == null) return;
     _toast(summary);
     // 自動取り込み: read the folder now that shooting is over (never mid-burst).
     await importInbox();
+  }
+
+  /// Between pages: which side is next, with the actions Google's scanner
+  /// cannot show. Null = dismissed (treated as end).
+  Future<_BurstChoice?> _burstPrompt(BurstSession s) => showDialog<_BurstChoice>(
+        context: context,
+        barrierDismissible: false,
+        builder: (c) {
+          final back = s.side == CardSide.back;
+          return AlertDialog(
+            title: Text(s.title),
+            content: Text(back
+                ? '裏面をスキャナーで撮ります。印字がなければ「白地で保管」。'
+                : s.cards == 0
+                    ? 'スキャナーが開きます。名刺を枠に入れると自動で撮れます。'
+                    : '${s.cards} 枚保存済み。次の名刺の表面を撮るか、ここで終了できます。'),
+            actions: [
+              if (back)
+                TextButton(
+                  onPressed: () => Navigator.pop(c, _BurstChoice.blank),
+                  child: const Text('白地で保管'),
+                )
+              else
+                TextButton(
+                  onPressed: () => Navigator.pop(c, _BurstChoice.end),
+                  child: const Text('撮影を終了'),
+                ),
+              FilledButton.icon(
+                onPressed: () => Navigator.pop(c, _BurstChoice.shoot),
+                icon: const Icon(Icons.camera_alt),
+                label: Text(back ? '裏面を撮影' : '表面を撮影'),
+              ),
+            ],
+          );
+        },
+      );
+
+  /// One page with the ML Kit scanner. Empty list = the user closed it;
+  /// null = the scanner could not start (fall back to the in-app camera).
+  Future<List<String>?> _captureOnePage() async {
+    final scanner = DocumentScanner(
+        options: DocumentScannerOptions(
+            pageLimit: 1, mode: ScannerMode.base, isGalleryImport: true));
+    try {
+      return (await scanner.scanDocument()).images ?? const [];
+    } catch (e) {
+      if (e.toString().toLowerCase().contains('cancel')) return const [];
+      final (store, _, _) = await _ready;
+      await store.appendError('document_scanner burst', e);
+      return null;
+    } finally {
+      await scanner.close();
+    }
+  }
+
+  /// The scanner's result arrives before its delegate activity has finished;
+  /// launching the next session right away fails inside Google's delegate
+  /// ("Failed to handle result") and leaves a black screen. Wait until our
+  /// activity is back in front, then a little longer for the delegate to go.
+  Future<void> _waitForScannerToClose() async {
+    for (var i = 0; i < 30; i++) {
+      if (WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed) break;
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+    }
+    await Future<void>.delayed(const Duration(milliseconds: 800));
   }
 
   /// Camera or album for the front (true) or back side.
