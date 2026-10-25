@@ -1,4 +1,5 @@
 import 'card_status.dart';
+import 'contact_mapper.dart' show phoneDigits;
 import 'extractor.dart';
 import 'vault_index.dart';
 
@@ -125,5 +126,25 @@ Map<String, List<String>> suggestionsFrom(Map<String, String> notes) {
           });
         return sorted;
       }(),
+  };
+}
+
+/// Stems of cards that share a phone number (digits, +81 folded) or an
+/// email (case-insensitive) with another card: the same card scanned twice,
+/// or two people on one line. Empty values never match.
+Set<String> duplicateStems(List<CardSummary> cards) {
+  final byKey = <String, List<String>>{};
+  for (final c in cards) {
+    final keys = {
+      for (final p in [c.phone, c.mobile]) if (p != null) 'p:${phoneDigits(p)}',
+      if (c.email != null) 'e:${c.email!.trim().toLowerCase()}',
+    }..removeWhere((k) => k.length <= 2);
+    for (final k in keys) {
+      byKey.putIfAbsent(k, () => []).add(c.stem);
+    }
+  }
+  return {
+    for (final stems in byKey.values)
+      if (stems.toSet().length > 1) ...stems,
   };
 }

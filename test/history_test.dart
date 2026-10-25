@@ -82,6 +82,20 @@ tags: [名刺]
     expect(s.firstWhere((c) => c.stem == 'k01').status, CardStatus.reviewed);
   });
 
+  test('duplicateStems: cards sharing a phone number or email are duplicates of each other', () {
+    const cards = [
+      CardSummary(noteStem: 'a', stem: 'k01', name: '山田 太郎', phone: '03-1234-5678'),
+      CardSummary(noteStem: 'b', stem: 'k02', name: '山田太郎', mobile: '+81 3 1234 5678'),
+      CardSummary(noteStem: 'c', stem: 'k03', name: '佐藤 花子', email: 'Hanako@Example.com'),
+      CardSummary(noteStem: 'd', stem: 'k04', name: '佐藤 はなこ', email: 'hanako@example.com'),
+      CardSummary(noteStem: 'e', stem: 'k05', name: '鈴木 一郎', phone: '06-0000-0000'),
+      CardSummary(noteStem: 'f', stem: 'k06', name: '名無し'),
+      CardSummary(noteStem: 'g', stem: 'k07', name: '名無し 2'),
+    ];
+    expect(duplicateStems(cards), {'k01', 'k02', 'k03', 'k04'},
+        reason: 'phones compared by digits (+81 folded), emails case-insensitively; empty values never match');
+  });
+
   test('matches searches 区分 and 関係者; suggestionsFrom ranks values by use', () {
     const c = '''---
 type: meishi

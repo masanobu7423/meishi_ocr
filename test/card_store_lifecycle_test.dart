@@ -173,6 +173,21 @@ void main() {
     expect((await store.loadCard('c1'))!.backImage!.path.replaceAll('\\', '/'), endsWith('images/c1_back.jpg'));
   });
 
+  test('autoBackup: once a day when there are cards, keeping the newest five', () async {
+    final day = DateTime(2026, 10, 25, 9);
+    expect(await store.autoBackup(now: day), isNull, reason: 'nothing to back up yet');
+    await save('c1', yamada, at: oct25);
+    expect(await store.autoBackup(now: day), isNotNull, reason: 'first backup');
+    expect(await store.autoBackup(now: day.add(const Duration(hours: 5))), isNull, reason: 'same day');
+    for (var d = 1; d <= 6; d++) {
+      expect(await store.autoBackup(now: day.add(Duration(days: d))), isNotNull);
+    }
+    final names = (await store.backups()).map((f) => f.uri.pathSegments.last).toList();
+    expect(names.length, 5, reason: 'older zips are pruned');
+    expect(names.first, 'meishi_backup_2026-10-31_0900.zip');
+    expect(names.last, 'meishi_backup_2026-10-27_0900.zip');
+  });
+
   test('backups lists zip files newest first', () async {
     expect(await store.backups(), isEmpty);
     await store.backup(now: DateTime(2026, 10, 24, 8, 0));

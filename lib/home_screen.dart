@@ -87,6 +87,17 @@ class HomeScreen extends StatelessWidget {
                       unit: '枚'),
                 ),
               ),
+              // Only when there is something to clean up: the same card read twice.
+              if (duplicateStems(cards).isNotEmpty) ...[
+                const SizedBox(width: AppSpace.unit),
+                Expanded(
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(AppRadius.medium),
+                    onTap: () => onContinue!(StatusFilter.duplicate),
+                    child: _Stat(label: '重複', value: '${duplicateStems(cards).length}', unit: '枚'),
+                  ),
+                ),
+              ],
             ],
           ),
         ],

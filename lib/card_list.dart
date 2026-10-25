@@ -10,12 +10,16 @@ enum CardSort { date, company, name }
 
 /// What the list shows: everything, only burst captures nobody has looked
 /// at yet, or everything not yet in the address book.
-enum StatusFilter { all, unreviewed, unregistered }
+enum StatusFilter { all, unreviewed, unregistered, duplicate }
 
 List<CardSummary> filterCards(List<CardSummary> cards, StatusFilter f) => switch (f) {
       StatusFilter.all => cards,
       StatusFilter.unreviewed => cards.where((c) => c.status == CardStatus.unreviewed).toList(),
       StatusFilter.unregistered => cards.where((c) => c.status != CardStatus.registered).toList(),
+      StatusFilter.duplicate => () {
+          final d = duplicateStems(cards);
+          return cards.where((c) => d.contains(c.stem)).toList();
+        }(),
     };
 
 /// Pure ordering used by the list screen.
@@ -129,6 +133,7 @@ class _CardListState extends State<CardList> {
     final scheme = Theme.of(context).colorScheme;
     final text = Theme.of(context).textTheme;
     final cards = widget.cards;
+    final dups = widget.showStatus ? duplicateStems(cards) : const <String>{};
     if (cards.isEmpty) {
       return Center(
         child: Padding(
@@ -177,6 +182,17 @@ class _CardListState extends State<CardList> {
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
               Text(c.scanned ?? '', style: text.labelSmall),
+              if (dups.contains(c.stem))
+                Container(
+                  margin: const EdgeInsets.only(top: 2),
+                  padding: const EdgeInsets.symmetric(horizontal: AppSpace.unit, vertical: 1),
+                  decoration: BoxDecoration(
+                    color: scheme.secondaryContainer,
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: Text('重複',
+                      style: text.labelSmall?.copyWith(color: scheme.onSecondaryContainer)),
+                ),
               if (widget.showStatus && c.status != CardStatus.registered)
                 Container(
                   margin: const EdgeInsets.only(top: 2),
@@ -303,6 +319,7 @@ class _ListScreenState extends State<ListScreen> {
               ButtonSegment(value: StatusFilter.all, label: Text('すべて')),
               ButtonSegment(value: StatusFilter.unreviewed, label: Text('未確認')),
               ButtonSegment(value: StatusFilter.unregistered, label: Text('未登録')),
+              ButtonSegment(value: StatusFilter.duplicate, label: Text('重複')),
             ],
             selected: {_filter},
             onSelectionChanged: (s) {
@@ -331,9 +348,11 @@ class _ListScreenState extends State<ListScreen> {
             onDelete: widget.onDelete,
             emptyText: widget.cards.isEmpty
                 ? 'まだ名刺がありません。撮影して保存すると、ここに並びます'
-                : _filter == StatusFilter.unreviewed
-                    ? '未確認の名刺はありません'
-                    : '未登録の名刺はありません',
+                : switch (_filter) {
+                    StatusFilter.unreviewed => '未確認の名刺はありません',
+                    StatusFilter.duplicate => '同じ電話番号やメールの名刺はありません',
+                    _ => '未登録の名刺はありません',
+                  },
           ),
         ),
       ],

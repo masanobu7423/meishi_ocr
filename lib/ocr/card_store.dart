@@ -215,6 +215,23 @@ class CardStore {
     return (written, failed);
   }
 
+  /// Unattended safety net: one backup per calendar day while there are
+  /// cards, keeping the newest [keep] zips. Returns the new zip, or null
+  /// when nothing was done.
+  Future<File?> autoBackup({DateTime? now, int keep = 5}) async {
+    final t = now ?? DateTime.now();
+    final golden = _dir('golden');
+    if (!golden.existsSync() || golden.listSync().whereType<File>().isEmpty) return null;
+    final existing = await backups();
+    String day(DateTime d) => d.toIso8601String().substring(0, 10);
+    if (existing.isNotEmpty && existing.first.uri.pathSegments.last.contains(day(t))) return null;
+    final (zip, _) = await backup(now: t);
+    for (final old in (await backups()).skip(keep)) {
+      await old.delete();
+    }
+    return zip;
+  }
+
   /// Backup zips in `<root>/backup/`, newest first.
   Future<List<File>> backups() async {
     final d = _dir('backup');

@@ -279,6 +279,15 @@ class _HomeShellState extends State<HomeShell> {
   void initState() {
     super.initState();
     _resolveAccount();
+    // Unattended daily backup (5 kept): the app's folder dies with an
+    // uninstall, so the zips are at least there to copy out.
+    _ready.then((r) async {
+      try {
+        await r.$1.autoBackup();
+      } catch (e) {
+        await r.$1.appendError('autoBackup', e);
+      }
+    });
   }
 
   @override

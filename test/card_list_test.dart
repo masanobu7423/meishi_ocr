@@ -29,13 +29,29 @@ void main() {
     const CardSummary(noteStem: 'g', stem: 'g1', name: '登録 三郎', status: CardStatus.registered, scanned: '2026-10-24'),
   ];
 
-  test('filterCards: all / unreviewed / not yet registered', () {
+  test('filterCards: all / unreviewed / not yet registered / duplicates', () {
     expect(filterCards(mixed, StatusFilter.all).map((c) => c.stem), ['u1', 'r1', 'g1']);
     expect(filterCards(mixed, StatusFilter.unreviewed).map((c) => c.stem), ['u1']);
     expect(filterCards(mixed, StatusFilter.unregistered).map((c) => c.stem), ['u1', 'r1']);
+    final twice = [
+      ...mixed,
+      const CardSummary(noteStem: 'x', stem: 'x1', name: '二重 太郎', phone: '03-1111-2222', scanned: '2026-10-27'),
+      const CardSummary(noteStem: 'y', stem: 'y1', name: '二重 太郎', phone: '0311112222', scanned: '2026-10-28'),
+    ];
+    expect(filterCards(twice, StatusFilter.duplicate).map((c) => c.stem), ['x1', 'y1']);
   });
 
   Widget app(Widget child) => MaterialApp(theme: appTheme(), home: Scaffold(body: child));
+
+  testWidgets('a duplicated card shows a 重複 badge', (t) async {
+    const twice = [
+      CardSummary(noteStem: 'x', stem: 'x1', name: '二重 太郎', phone: '03-1111-2222', status: CardStatus.registered),
+      CardSummary(noteStem: 'y', stem: 'y1', name: '二重 次郎', phone: '03-1111-2222', status: CardStatus.registered),
+      CardSummary(noteStem: 'z', stem: 'z1', name: '一人 三郎', phone: '03-3333-4444', status: CardStatus.registered),
+    ];
+    await t.pumpWidget(app(CardList(cards: twice, vault: Directory.systemTemp, onTap: (_) {})));
+    expect(find.text('重複'), findsNWidgets(2));
+  });
 
   testWidgets('long-press selects; the bar offers 修正 for one card and 削除 for all selected', (t) async {
     final deleted = <List<String>>[];
