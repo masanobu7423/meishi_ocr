@@ -185,7 +185,10 @@ class ScanPageState extends State<ScanPage> {
       ),
     );
     final summary = session.summary;
-    if (mounted && summary != null) _toast(summary);
+    if (!mounted || summary == null) return;
+    _toast(summary);
+    // 自動取り込み: read the folder now that shooting is over (never mid-burst).
+    await importInbox();
   }
 
   /// Camera or album for the front (true) or back side.
