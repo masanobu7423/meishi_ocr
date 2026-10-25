@@ -159,8 +159,20 @@ class ScanPageState extends State<ScanPage> {
       }
       return const [];
     } finally {
-      scanner.close();
+      await scanner.close();
     }
+  }
+
+  /// The scanner's result arrives before its delegate activity has finished;
+  /// launching the next session right away fails inside Google's delegate
+  /// ("Failed to handle result") and leaves a black screen. Wait until our
+  /// activity is back in front, then a little longer for the delegate to go.
+  Future<void> _waitForScannerToClose() async {
+    for (var i = 0; i < 30; i++) {
+      if (WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed) break;
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+    }
+    await Future<void>.delayed(const Duration(milliseconds: 800));
   }
 
   Future<void> shootMany() async {
@@ -198,6 +210,7 @@ class ScanPageState extends State<ScanPage> {
     var cards = 0, backs = 0;
     String? stem; // the card whose back comes next (paired mode)
     while (mounted) {
+      if (cards + backs > 0) await _waitForScannerToClose();
       final paths = await _captureMany();
       if (paths.isEmpty) break; // closed the scanner
       for (final p in paths) {
