@@ -79,11 +79,11 @@ adb pull /sdcard/Android/data/jp.tobishoku.meishi_ocr/files/golden ./pulled
 ## リリース（内部テスト）
 
 - バージョンは `pubspec.yaml` の `version: <name>+<code>`。v0.2.0 (2) から Play 内部テスト用。
-- **Android AAB**: `flutter build appbundle --release`。署名は `android/key.properties`（git 外）が指す keystore。
-  **Play が登録しているアップロード鍵は SHA1 `63:A5:F1:…:8F:DE` = 図面PDF と共通の `C:/Users/tobis/keys/zumen-upload.keystore`**
-  （2026-10-26 に判明。`android/app/upload-keystore.jks`（SHA1 `0E:3A:…`）で署名した AAB は Play に拒否される。
-  その鍵の設定は `android/key.properties.0E3A.bak` に退避）。keystore と key.properties は必ずバックアップし、
-  失くすと同じアプリとして更新できない。鍵の指紋は `keytool -printcert -jarfile <aab> | grep SHA1` で確認できる。
+- **Android AAB**: `flutter build appbundle --release`。署名は `android/key.properties`（git 外）が指す
+  `android/app/upload-keystore.jks`（git 外、SHA1 `0E:3A:6E:…:5E:55`）。この 2 ファイルは必ずバックアップし、失くすと同じ
+  アプリとして更新できない。鍵の指紋は `keytool -printcert -jarfile <aab> | grep SHA1` で確認できる。
+  Play Console で「誤った鍵で署名」「パッケージ名は tokyo.sunrisegroup.zumen」と出たら、**図面PDF のアプリに上げようとしている**
+  （2026-10-26 に実際に起きた）。名刺スキャン（`jp.tobishoku.meishi_ocr`）のアプリを開き直す。
   `key.properties` が無い環境（CI）は debug 鍵にフォールバックするので、CI の成果物は Play に上げられない。
   Play Console へのアップロードと公開ボタンは人が押す（`codemagic.yaml` の android-internal も `submit_as_draft`）。
 - **iOS TestFlight**: Windows からはビルドも提出もできない。`codemagic.yaml` の ios-testflight を Mac ランナーで動かす。
