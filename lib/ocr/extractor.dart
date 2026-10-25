@@ -315,8 +315,14 @@ CardFields extractWith(List<OcrLine> front, List<OcrLine> back, Learned? learned
 
   // 5. Roman name: tallest Latin-only line on the back, else on the front,
   //    skipping company-looking lines.
+  // A romanised person name has lower-case letters ("Taro Yamada",
+  // "SUZUKI Ichiro"); an all-caps Latin line is a logo or company name
+  // (seen on a real card: "PINES DIRECT" landed in nameRoman).
   bool roman(_L l) =>
-      !l.used && _latinOnly.hasMatch(l.rest) && !_company.hasMatch(l.rest);
+      !l.used &&
+      _latinOnly.hasMatch(l.rest) &&
+      !_company.hasMatch(l.rest) &&
+      RegExp(r'[a-z]').hasMatch(l.rest);
   final romanLine =
       tallest(pool.where((l) => !l.front && roman(l))) ?? tallest(remaining.where(roman));
   if (romanLine != null) f.nameRoman = fixRomanSpacing(romanLine.rest);

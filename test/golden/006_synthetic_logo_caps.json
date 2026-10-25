@@ -1,0 +1,22 @@
+{
+  "strict": true,
+  "note": "From a real card (anonymised): an all-caps Latin logo line and no romanised person name. The logo must not become nameRoman.",
+  "front": [
+    {"text": "ACME BUILD", "l": 40, "t": 40, "w": 220, "h": 40},
+    {"text": "不動産事業部", "l": 300, "t": 60, "w": 160, "h": 18},
+    {"text": "部長", "l": 300, "t": 85, "w": 40, "h": 18},
+    {"text": "佐藤 一", "l": 300, "t": 110, "w": 200, "h": 46},
+    {"text": "株式会社アクメビルド", "l": 300, "t": 200, "w": 240, "h": 20},
+    {"text": "TEL: 03-0000-1111", "l": 300, "t": 230, "w": 200, "h": 18},
+    {"text": "sato@acme-build.example", "l": 300, "t": 255, "w": 260, "h": 18}
+  ],
+  "expected": {
+    "name": "佐藤 一",
+    "nameRoman": null,
+    "company": "株式会社アクメビルド",
+    "dept": "不動産事業部",
+    "title": "部長",
+    "phone": "03-0000-1111",
+    "email": "sato@acme-build.example"
+  }
+}
