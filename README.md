@@ -89,6 +89,14 @@ adb pull /sdcard/Android/data/jp.tobishoku.meishi_ocr/files/golden ./pulled
 - **iOS TestFlight**: Windows からはビルドも提出もできない。`codemagic.yaml` の ios-testflight を Mac ランナーで動かす。
   事前に App Store Connect でアプリと bundle id を作り、API キーを Codemagic に登録する。
 - リリース名とノート（JA/EN）は `docs/releases/v<version>.md`。
+- release は R8（`isMinifyEnabled` / `isShrinkResources`、2026-10-26 から）。難読化マップは
+  `build/app/outputs/mapping/release/mapping.txt`（Play Console のクラッシュ解読用に AAB と一緒に上げる）。R8 で
+  クラスが消えて release だけ失敗するときは `build/app/outputs/mapping/release/missing_rules.txt` を見て
+  `android/app/proguard-rules.pro` に足す。
+- Play Console の「対応策」のうち、エッジ・ツー・エッジの 2 件は Flutter エンジン由来（flutter/flutter#165327, #165328。
+  3.41.1 より後の Flutter で修正）。アプリ側は `main()` で `SystemUiMode.edgeToEdge` を有効にし、`SystemChrome` で
+  バーの色を指定しない。`windowOptOutEdgeToEdgeEnforcement` は使わない（API 36 で不可）。「大画面対応」は ML Kit
+  スキャナの Activity（portrait 固定）が原因で、Android 16 以降は OS が無視するため上書きしない。
 - プライバシーポリシーは `docs/privacy.md`（公開 URL: https://masanobu7423.github.io/meishi_ocr/privacy.html 、GitHub Pages が `docs/` を配信）。`python tool/privacy_html.py` で `docs/privacy.html` を再生成。
 - `git tag v0.2.0 && git push --tags` で GitHub Actions が APK（debug 鍵）を artifact に置く（配布用ではなく動作確認用）。
 

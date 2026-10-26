@@ -52,6 +52,10 @@ android {
         release {
             signingConfig = if (keyProperties.isNotEmpty()) signingConfigs.getByName("upload")
                             else signingConfigs.getByName("debug")
+            // R8: shrink + optimise (Play Console recommendation). Keep rules for
+            // the ML Kit scripts we do not ship live in proguard-rules.pro.
+            isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
     }

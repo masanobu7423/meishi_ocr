@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_contacts/flutter_contacts.dart';
 import 'package:google_mlkit_document_scanner/google_mlkit_document_scanner.dart';
 import 'package:image_picker/image_picker.dart';
@@ -34,12 +35,18 @@ import 'theme.dart';
 // JSON, Obsidian vault, images, vCard, logs). HomeShell owns the tabs; this
 // file is the スキャン tab: screen state and button handlers only. Look and
 // copy follow DESIGN.md.
-void main() => runApp(MaterialApp(
-      title: '名刺スキャン',
-      theme: appTheme(),
-      darkTheme: appTheme(brightness: Brightness.dark),
-      home: const HomeShell(),
-    ));
+void main() {
+  WidgetsFlutterBinding.ensureInitialized();
+  // Edge-to-edge on every Android version (15+ does it by itself); the Play
+  // Console flags apps that leave it to the OS default on older releases.
+  SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+  runApp(MaterialApp(
+    title: '名刺スキャン',
+    theme: appTheme(),
+    darkTheme: appTheme(brightness: Brightness.dark),
+    home: const HomeShell(),
+  ));
+}
 
 /// One imported card waiting for review.
 
