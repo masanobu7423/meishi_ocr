@@ -23,7 +23,9 @@ import 'ocr/learned.dart';
 import 'ocr/merge.dart';
 import 'ocr/ocr_line.dart';
 import 'ocr/ocr_pipeline.dart';
+import 'calendar.dart';
 import 'ocr/card_note.dart' show defaultJob;
+import 'ocr/ics_export.dart' show eventDescription, eventTitle;
 import 'ocr/jobs.dart';
 import 'ocr/review_queue.dart';
 import 'ocr/vcard_export.dart' show vcardOfFields;
@@ -519,6 +521,17 @@ class ScanPageState extends State<ScanPage> {
     }
   }
 
+  /// The 次回連絡日 as an all-day event in the phone's calendar app (which
+  /// syncs to Google and reminds); the user confirms there.
+  Future<void> _addToCalendar(String date) async {
+    final f = fieldsFromJson(_reviewed());
+    final ok = await addToCalendar(
+        title: eventTitle(f.name ?? '名刺', f.company),
+        date: date,
+        description: eventDescription(phone: f.phone, mobile: f.mobile, email: f.email));
+    if (!ok && mounted) setState(() => _error = 'カレンダーのアプリを開けませんでした');
+  }
+
   /// Drop an unsaved read (a single scan that went wrong) and go back to
   /// the empty state; nothing in the store is touched.
   Future<void> _discard() async {
@@ -776,6 +789,7 @@ class ScanPageState extends State<ScanPage> {
                 missing: _missing,
                 suggestions: widget.suggestions,
                 jobs: widget.jobs,
+                onCalendar: _addToCalendar,
                 header: Column(
                   children: [
                     _CardHeader(

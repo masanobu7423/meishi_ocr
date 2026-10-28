@@ -373,6 +373,12 @@ inbox に残り、件数を通知する。確認は取込直後のレビュー�
   「連絡予定」節に日付順で並ぶ。連絡先のメモ欄には `次回連絡:` の行。通知やカレンダー連携は持たない（ponytail: ホームを
   開けば分かる。必要になったら端末カレンダーへの書き出しを足す）。純粋関数は `parseYmd` / `dueCards` / `byNextContact` /
   `isOverdue`（`lib/ocr/history.dart`）。
+- **カレンダーに登録**（`lib/calendar.dart` + `MainActivity.kt` の MethodChannel `insertEvent`）: 日付欄の下の
+  「カレンダーに登録」で、端末のカレンダーアプリの新規予定画面を終日・タイトル「連絡: 氏名（会社）」・説明（電話/携帯/
+  メール）で開く。保存するのは利用者（カレンダーの権限は不要、通知はカレンダー側の設定で鳴る）。開けないときは上部バナー。
+- **連絡予定の ics**（`lib/ocr/ics_export.dart`、メニュー「連絡予定をカレンダーに書き出す（ics）」）: 日付のある名刺を
+  終日 VEVENT（UID `<stem>@meishi_ocr`、DTEND は翌日）にまとめた iCalendar を共有シートへ。Google カレンダー・Outlook・
+  端末のカレンダーに一括で取り込める。RFC 5545 のエスケープ・CRLF・60 文字折り返し。
 - **CSV 書き出し**（`lib/ocr/csv_export.dart`、メニュー「全件を CSV で共有（Excel 用）」）: 確認画面と同じ列順・日本語の見出し
   + 状態 / 取込日 / ノート。全セルを引用符で囲み（`"` は二重化）、CRLF、先頭に BOM（Excel が UTF-8 と認識する）。
   `vault/_名刺.csv` に書いて共有シートへ。

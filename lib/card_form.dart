@@ -45,6 +45,8 @@ class CardForm extends StatefulWidget {
   final List<String> jobs;
   /// Reference date for the 次回連絡日 picker; null = now.
   final DateTime? today;
+  /// 「カレンダーに登録」 under a set 次回連絡日; null hides the button.
+  final void Function(String date)? onCalendar;
   /// Scrolls with the fields (photos, queue arrows, action chips), so a
   /// short screen (landscape with the keyboard up) never overflows.
   final Widget? header;
@@ -56,6 +58,7 @@ class CardForm extends StatefulWidget {
     this.suggestions = const {},
     this.jobs = defaultJobs,
     this.today,
+    this.onCalendar,
     this.header,
   });
 
@@ -189,11 +192,31 @@ class _CardFormState extends State<CardForm> {
   Widget _date(String k, TextTheme text, ColorScheme scheme) {
     final c = widget.controllers[k]!;
     final today = widget.today ?? DateTime.now();
+    // Listens to the controller: a date set by the picker, the clear button or
+    // the caller shows / hides the suffix and the calendar button at once.
+    return ValueListenableBuilder<TextEditingValue>(
+      valueListenable: c,
+      builder: (context, v, _) => Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _dateField(c, today, text, scheme),
+          if (widget.onCalendar != null && parseYmd(v.text) != null)
+            TextButton.icon(
+              onPressed: () => widget.onCalendar!(v.text.trim()),
+              icon: const Icon(Icons.event_available_outlined, size: AppSize.iconSmall),
+              label: const Text('カレンダーに登録'),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _dateField(TextEditingController c, DateTime today, TextTheme text, ColorScheme scheme) {
     return TextField(
       controller: c,
       readOnly: true,
       decoration: InputDecoration(
-        labelText: fieldLabels[k],
+        labelText: fieldLabels['nextContact'],
         helperText: '次に連絡する日。ホームと一覧の「連絡予定」に出ます（空欄でも保存できます）',
         helperStyle: text.labelSmall?.copyWith(color: scheme.onSurfaceVariant),
         prefixIcon: const Icon(Icons.event_outlined),
@@ -202,7 +225,7 @@ class _CardFormState extends State<CardForm> {
             : IconButton(
                 tooltip: '日付を消す',
                 icon: const Icon(Icons.clear),
-                onPressed: () => setState(c.clear),
+                onPressed: c.clear, // the ValueListenableBuilder redraws
               ),
       ),
       onTap: () async {
@@ -213,7 +236,7 @@ class _CardFormState extends State<CardForm> {
           firstDate: DateTime(2000),
           lastDate: DateTime(2100),
         );
-        if (picked != null && mounted) setState(() => c.text = ymd(picked));
+        if (picked != null) c.text = ymd(picked); // the ValueListenableBuilder redraws
       },
     );
   }

@@ -19,6 +19,7 @@ import 'ocr/sync.dart';
 import 'ocr/vault_index.dart';
 import 'ocr/vcard_export.dart';
 import 'jobs_screen.dart';
+import 'ocr/ics_export.dart';
 import 'ocr/jobs.dart';
 import 'share.dart';
 
@@ -114,6 +115,20 @@ class _HomeShellState extends State<HomeShell> {
       return;
     }
     if (!await shareFile(file, mime: 'text/vcard', subject: '名刺 $n 件 (vCard)') && mounted) _toast('共有できませんでした');
+  }
+
+  /// Every 次回連絡日 as an iCalendar file: import once into any calendar.
+  Future<void> _shareIcs() async {
+    final (store, _) = await _ready;
+    final dated = byNextContact(cardSummaries(await store.notes()));
+    if (dated.isEmpty) {
+      if (mounted) _toast('次回連絡日を入れた名刺がありません');
+      return;
+    }
+    if (!await shareText('連絡予定.ics', 'text/calendar', icsOfCards(dated), subject: '名刺スキャン 連絡予定 ${dated.length} 件') &&
+        mounted) {
+      _toast('共有できませんでした');
+    }
   }
 
   /// Every card as CSV (Excel-ready) to the share sheet.
@@ -425,6 +440,7 @@ class _HomeShellState extends State<HomeShell> {
               'vcard' => _exportVcard(),
               'share_vcard' => _shareAllVcard(),
               'share_csv' => _shareCsv(),
+              'share_ics' => _shareIcs(),
               'share_backup' => _shareBackup(),
               'jobs' => _editJobs(),
               'restore' => _restore(),
@@ -438,6 +454,7 @@ class _HomeShellState extends State<HomeShell> {
               PopupMenuItem(value: 'share_vcard', child: Text('全件を vCard で共有')),
               PopupMenuItem(value: 'vcard', child: Text('全件を vCard に書き出す')),
               PopupMenuItem(value: 'share_csv', child: Text('全件を CSV で共有（Excel 用）')),
+              PopupMenuItem(value: 'share_ics', child: Text('連絡予定をカレンダーに書き出す（ics）')),
               PopupMenuItem(value: 'share_backup', child: Text('バックアップを共有')),
               PopupMenuItem(value: 'backup', child: Text('バックアップを作る')),
               PopupMenuItem(value: 'restore', child: Text('バックアップから復元')),

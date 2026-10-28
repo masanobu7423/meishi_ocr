@@ -18,9 +18,12 @@ Future<bool> _share(XFile file, String subject) async {
 
 /// A vCard built in memory as `<name>.vcf`; the plugin hands it over through
 /// its own temp folder, so nothing is left in the app's data.
-Future<bool> shareVcard(String name, String vcf) => _share(
-    XFile.fromData(utf8.encode(vcf), mimeType: 'text/vcard', name: '${safeFileStem(name)}.vcf'),
-    '名刺: $name');
+Future<bool> shareVcard(String name, String vcf) =>
+    shareText('${safeFileStem(name)}.vcf', 'text/vcard', vcf, subject: '名刺: $name');
+
+/// Any text built in memory as a file ([fileName] with its extension).
+Future<bool> shareText(String fileName, String mime, String content, {required String subject}) =>
+    _share(XFile.fromData(utf8.encode(content), mimeType: mime, name: fileName), subject);
 
 /// An existing file (the all-cards vCard, a backup zip) to the share sheet.
 Future<bool> shareFile(File file, {required String mime, required String subject}) =>

@@ -101,4 +101,24 @@ void main() {
     await t.pump();
     expect(ctl['nextContact']!.text, isEmpty);
   });
+
+  testWidgets('カレンダーに登録 appears only with a date and hands the date to the callback', (t) async {
+    final ctl = {for (final k in CardFields.keys) k: TextEditingController()};
+    addTearDown(() {
+      for (final x in ctl.values) {
+        x.dispose();
+      }
+    });
+    t.view.physicalSize = const Size(1000, 5000);
+    t.view.devicePixelRatio = 1;
+    addTearDown(t.view.resetPhysicalSize);
+    addTearDown(t.view.resetDevicePixelRatio);
+    String? sent;
+    await t.pumpWidget(app(CardForm(controllers: ctl, lines: const [], today: today, onCalendar: (d) => sent = d)));
+    expect(find.text('カレンダーに登録'), findsNothing);
+    ctl['nextContact']!.text = '2026-11-03';
+    await t.pump();
+    await t.tap(find.text('カレンダーに登録'));
+    expect(sent, '2026-11-03');
+  });
 }
