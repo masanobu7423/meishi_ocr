@@ -62,6 +62,16 @@ String buildIndex(Map<String, String> notes) {
   section('信頼度別', (fm) => [fm['trust']], (k) => '[[信頼度_$k]]');
   section('区分別', (fm) => [fm['category']], (k) => '[[区分_$k]]');
   section('関係者別', (fm) => splitNames(fm['related']), (k) => '[[$k]]');
+  final due = [
+    for (final c in cards)
+      if ((c.fm['next_contact'] ?? '').isNotEmpty) (c.fm['next_contact']!, link(c)),
+  ]..sort((x, y) => x.$1.compareTo(y.$1));
+  if (due.isNotEmpty) {
+    b.write('\n## 連絡予定\n\n');
+    for (final (d, l) in due) {
+      b.write('- $d: $l\n');
+    }
+  }
   b.write('\n#名刺 #名刺_索引\n');
   return b.toString();
 }

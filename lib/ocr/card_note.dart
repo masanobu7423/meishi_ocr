@@ -126,6 +126,7 @@ String cardNoteMarkdown(CardFields f,
     ..write(fm('related', f.related))
     ..write(fm('trust', f.trust))
     ..write(fm('contact_id', f.contactId))
+    ..write(fm('next_contact', f.nextContact))
     ..write('scanned: ${_ymd(scannedAt)}\n')
     ..write('vertical: $vertical\n')
     ..write('status: ${status.label}\n')

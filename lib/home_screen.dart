@@ -88,6 +88,17 @@ class HomeScreen extends StatelessWidget {
                       unit: '枚'),
                 ),
               ),
+              // Only when a follow-up is overdue or due this week.
+              if (dueCards(cards, today: today).isNotEmpty) ...[
+                const SizedBox(width: AppSpace.unit),
+                Expanded(
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(AppRadius.medium),
+                    onTap: () => onContinue!(StatusFilter.due),
+                    child: _Stat(label: '連絡予定', value: '${dueCards(cards, today: today).length}', unit: '件'),
+                  ),
+                ),
+              ],
               // Only when there is something to clean up: the same card read twice.
               if (duplicateStems(cards).isNotEmpty) ...[
                 const SizedBox(width: AppSpace.unit),
@@ -158,6 +169,7 @@ class HomeScreen extends StatelessWidget {
             onTap: onOpenCard,
             onDelete: onDelete,
             onShare: onShare,
+            today: today,
             showStatus: false,
             shrinkWrap: true,
           ),

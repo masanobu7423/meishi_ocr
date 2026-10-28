@@ -2,46 +2,16 @@ import 'package:flutter/material.dart';
 
 import 'ocr/address.dart';
 import 'ocr/extractor.dart';
+import 'ocr/fields.dart';
+import 'ocr/history.dart' show parseYmd, ymd;
 import 'ocr/jobs.dart';
 import 'ocr/ocr_line.dart';
 import 'ocr/vault_index.dart' show splitNames;
 import 'theme.dart';
 
-/// User-facing labels for CardFields keys (DESIGN.md §7: never show the keys).
-const fieldLabels = <String, String>{
-  'name': '氏名',
-  'nameKana': 'ふりがな',
-  'nameRoman': 'ローマ字',
-  'company': '会社',
-  'division': '部門',
-  'dept': '部署',
-  'title': '役職',
-  'job': '職種',
-  'trust': '信頼度',
-  'phone': '電話',
-  'mobile': '携帯',
-  'fax': 'FAX',
-  'email': 'メール',
-  'url': 'URL',
-  'postal': '郵便番号',
-  'address': '住所',
-  'corpNo': '法人番号',
-  'constructionLicense': '建設業許可',
-  'realEstateLicense': '宅建業免許',
-  'qualifications': '資格',
-  'category': '区分',
-  'related': '関係者',
-  'memo': 'メモ（会った場所・日付など）',
-};
+export 'ocr/fields.dart' show fieldLabels, fieldOrder;
 
-/// Fields in the order a person reads a card: who, where, how to reach,
-/// the trade data printed small at the bottom, then the user's own tags.
-const fieldOrder = [
-  'name', 'nameKana', 'company', 'division', 'dept', 'title', 'job',
-  'phone', 'mobile', 'email', 'postal', 'address', 'fax', 'url',
-  'corpNo', 'constructionLicense', 'realEstateLicense', 'qualifications',
-  'category', 'trust', 'related', 'nameRoman', 'memo',
-];
+
 
 /// 区分 choices. Values typed by hand or used before are offered too.
 /// 信頼度 scale; stored as the digit so Obsidian can sort on it.
@@ -73,6 +43,8 @@ class CardForm extends StatefulWidget {
   final Map<String, List<String>> suggestions;
   /// 職種 choices (the user's list); values already in use are appended.
   final List<String> jobs;
+  /// Reference date for the 次回連絡日 picker; null = now.
+  final DateTime? today;
   /// Scrolls with the fields (photos, queue arrows, action chips), so a
   /// short screen (landscape with the keyboard up) never overflows.
   final Widget? header;
@@ -83,6 +55,7 @@ class CardForm extends StatefulWidget {
     this.missing = const {},
     this.suggestions = const {},
     this.jobs = defaultJobs,
+    this.today,
     this.header,
   });
 
@@ -211,6 +184,40 @@ class _CardFormState extends State<CardForm> {
         dropdownMenuEntries: [for (final e in entries) DropdownMenuEntry(value: e, label: e)],
       );
 
+  /// 次回連絡日: read-only field, the platform date picker fills it,
+  /// the suffix clears it. Stored as yyyy-mm-dd so Obsidian can sort on it.
+  Widget _date(String k, TextTheme text, ColorScheme scheme) {
+    final c = widget.controllers[k]!;
+    final today = widget.today ?? DateTime.now();
+    return TextField(
+      controller: c,
+      readOnly: true,
+      decoration: InputDecoration(
+        labelText: fieldLabels[k],
+        helperText: '次に連絡する日。ホームと一覧の「連絡予定」に出ます（空欄でも保存できます）',
+        helperStyle: text.labelSmall?.copyWith(color: scheme.onSurfaceVariant),
+        prefixIcon: const Icon(Icons.event_outlined),
+        suffixIcon: c.text.isEmpty
+            ? null
+            : IconButton(
+                tooltip: '日付を消す',
+                icon: const Icon(Icons.clear),
+                onPressed: () => setState(c.clear),
+              ),
+      ),
+      onTap: () async {
+        final picked = await showDatePicker(
+          context: context,
+          initialDate: parseYmd(c.text) ?? today,
+          // Wide enough for any stored date (restored / hand-edited notes).
+          firstDate: DateTime(2000),
+          lastDate: DateTime(2100),
+        );
+        if (picked != null && mounted) setState(() => c.text = ymd(picked));
+      },
+    );
+  }
+
   /// 信頼度 1–5 as segments; tapping the chosen one again clears it.
   Widget _trust(TextTheme text, ColorScheme scheme) {
     final c = widget.controllers['trust']!;
@@ -272,6 +279,7 @@ class _CardFormState extends State<CardForm> {
               'category' => _dropdown(fieldLabels[k]!, widget.controllers[k]!, categories, typeable: true),
               'job' => _dropdown(fieldLabels[k]!, widget.controllers[k]!, jobs, typeable: true),
               'trust' => _trust(text, scheme),
+              'nextContact' => _date(k, text, scheme),
               'address' => Column(children: [_text(k, text, scheme), _addressParts()]),
               _ => Column(
                   crossAxisAlignment: CrossAxisAlignment.start,

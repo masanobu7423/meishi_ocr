@@ -116,6 +116,17 @@ class _HomeShellState extends State<HomeShell> {
     if (!await shareFile(file, mime: 'text/vcard', subject: '名刺 $n 件 (vCard)') && mounted) _toast('共有できませんでした');
   }
 
+  /// Every card as CSV (Excel-ready) to the share sheet.
+  Future<void> _shareCsv() async {
+    final (store, _) = await _ready;
+    final (file, n) = await store.exportCsv();
+    if (n == 0) {
+      if (mounted) _toast('共有できる名刺がありません');
+      return;
+    }
+    if (!await shareFile(file, mime: 'text/csv', subject: '名刺 $n 件 (CSV)') && mounted) _toast('共有できませんでした');
+  }
+
   /// A fresh backup zip to the share sheet: the way to get it off the phone.
   Future<void> _shareBackup() async {
     final (store, _) = await _ready;
@@ -413,6 +424,7 @@ class _HomeShellState extends State<HomeShell> {
               'import_contacts' => _importContacts(),
               'vcard' => _exportVcard(),
               'share_vcard' => _shareAllVcard(),
+              'share_csv' => _shareCsv(),
               'share_backup' => _shareBackup(),
               'jobs' => _editJobs(),
               'restore' => _restore(),
@@ -425,6 +437,7 @@ class _HomeShellState extends State<HomeShell> {
               PopupMenuItem(value: 'jobs', child: Text('職種の一覧を編集')),
               PopupMenuItem(value: 'share_vcard', child: Text('全件を vCard で共有')),
               PopupMenuItem(value: 'vcard', child: Text('全件を vCard に書き出す')),
+              PopupMenuItem(value: 'share_csv', child: Text('全件を CSV で共有（Excel 用）')),
               PopupMenuItem(value: 'share_backup', child: Text('バックアップを共有')),
               PopupMenuItem(value: 'backup', child: Text('バックアップを作る')),
               PopupMenuItem(value: 'restore', child: Text('バックアップから復元')),

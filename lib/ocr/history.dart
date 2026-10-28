@@ -16,6 +16,8 @@ class CardSummary {
   final String? job, trust;
   /// Address-book contact id when the card is linked (registered / imported).
   final String? contactId;
+  /// 次回連絡日 (yyyy-mm-dd) when a follow-up is planned.
+  final String? nextContact;
   final CardStatus status;
 
   const CardSummary({
@@ -39,6 +41,7 @@ class CardSummary {
     this.job,
     this.trust,
     this.contactId,
+    this.nextContact,
     this.status = CardStatus.reviewed,
   });
 
@@ -78,6 +81,7 @@ List<CardSummary> cardSummaries(Map<String, String> notes) {
       job: fm['job'],
       trust: fm['trust'],
       contactId: fm['contact_id'],
+      nextContact: fm['next_contact'],
       status: parseStatus(fm['status']),
     ));
   }
@@ -94,6 +98,34 @@ List<CardSummary> searchCards(List<CardSummary> cards, {String query = '', Strin
             (minTrust == 0 || (int.tryParse(c.trust ?? '') ?? 0) >= minTrust))
           c,
     ];
+
+/// `yyyy-mm-dd` → date; anything else (empty, slashes, junk) → null.
+DateTime? parseYmd(String? s) {
+  final t = s?.trim() ?? '';
+  if (!RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(t)) return null;
+  final d = DateTime.tryParse(t);
+  // DateTime normalises 2026-02-30 to March 2: only a real date counts.
+  return d != null && ymd(d) == t ? d : null;
+}
+
+/// `yyyy-mm-dd` of a date (the note / JSON form).
+String ymd(DateTime d) => '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+
+/// Cards whose 次回連絡日 is overdue or within [days] of [today], soonest first.
+List<CardSummary> dueCards(List<CardSummary> cards, {required DateTime today, int days = 7}) {
+  final limit = DateTime(today.year, today.month, today.day + days);
+  return byNextContact(cards).where((c) => !parseYmd(c.nextContact)!.isAfter(limit)).toList();
+}
+
+/// Every dated card, soonest first (undated ones dropped).
+List<CardSummary> byNextContact(List<CardSummary> cards) =>
+    cards.where((c) => parseYmd(c.nextContact) != null).toList()
+      ..sort((a, b) => a.nextContact!.compareTo(b.nextContact!));
+
+bool isOverdue(CardSummary c, DateTime today) {
+  final d = parseYmd(c.nextContact);
+  return d != null && d.isBefore(DateTime(today.year, today.month, today.day));
+}
 
 /// Every 職種 in use, most used first (ties keep first-seen order).
 List<String> jobsOf(List<CardSummary> cards) {

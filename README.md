@@ -365,6 +365,18 @@ inbox に残り、件数を通知する。確認は取込直後のレビュー�
 - 競合解決は持たない（ponytail）: どちらを正とするかは利用者が「保存」か「取り込む」で決める。更新日時の比較は
   flutter_contacts が公開していないため見送り。
 
+## 次回連絡日（フォローアップ）と CSV
+
+- **次回連絡日**（frontmatter `next_contact`、`yyyy-mm-dd`）: 確認画面の日付欄（端末の日付ピッカー、× で消す）。
+  ホームに「連絡予定」タイル（期限切れ + 7 日以内の件数、0 件なら出ない）、一覧に「連絡予定」絞り込み（日付のある名刺を
+  近い順、並び替えより優先）、行に「期限切れ MM/DD」（error 色）/「連絡 MM/DD」（tertiary 色）。`_名刺一覧.md` の
+  「連絡予定」節に日付順で並ぶ。連絡先のメモ欄には `次回連絡:` の行。通知やカレンダー連携は持たない（ponytail: ホームを
+  開けば分かる。必要になったら端末カレンダーへの書き出しを足す）。純粋関数は `parseYmd` / `dueCards` / `byNextContact` /
+  `isOverdue`（`lib/ocr/history.dart`）。
+- **CSV 書き出し**（`lib/ocr/csv_export.dart`、メニュー「全件を CSV で共有（Excel 用）」）: 確認画面と同じ列順・日本語の見出し
+  + 状態 / 取込日 / ノート。全セルを引用符で囲み（`"` は二重化）、CRLF、先頭に BOM（Excel が UTF-8 と認識する）。
+  `vault/_名刺.csv` に書いて共有シートへ。
+
 ## 職種と信頼度（Obsidian での紐付け用）
 
 - **職種**（frontmatter `job`、タグ `職種_x`）: 建設業種の一覧（`lib/ocr/jobs.dart` `defaultJobs`: 鳶 / 足場 / 鉄筋 / 型枠 /

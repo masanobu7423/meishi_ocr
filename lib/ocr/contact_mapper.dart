@@ -58,6 +58,7 @@ Contact toContact(CardFields f, {required DateTime scannedAt, String? source}) {
         if (f.category != null) '区分: ${f.category}',
         if (f.job != null) '職種: ${f.job}',
         if (f.trust != null) '信頼度: ${f.trust}',
+        if (f.nextContact != null) '次回連絡: ${f.nextContact}',
         if (f.related != null) '関係者: ${f.related}',
         if (f.corpNo != null) '法人番号: ${f.corpNo}',
         if (f.constructionLicense != null) '建設業許可: ${f.constructionLicense}',
@@ -71,7 +72,7 @@ Contact toContact(CardFields f, {required DateTime scannedAt, String? source}) {
 
 /// The note lines toContact writes, by card key (the reverse of the list above).
 const _noteKeys = {
-  '区分': 'category', '職種': 'job', '信頼度': 'trust', '関係者': 'related', '法人番号': 'corpNo',
+  '区分': 'category', '職種': 'job', '信頼度': 'trust', '次回連絡': 'nextContact', '関係者': 'related', '法人番号': 'corpNo',
   '建設業許可': 'constructionLicense', '宅建業免許': 'realEstateLicense', '資格': 'qualifications',
 };
 

@@ -10,7 +10,7 @@ enum CardSort { date, company, name }
 
 /// What the list shows: everything, only burst captures nobody has looked
 /// at yet, or everything not yet in the address book.
-enum StatusFilter { all, unreviewed, unregistered, duplicate }
+enum StatusFilter { all, unreviewed, unregistered, duplicate, due }
 
 List<CardSummary> filterCards(List<CardSummary> cards, StatusFilter f) => switch (f) {
       StatusFilter.all => cards,
@@ -20,6 +20,7 @@ List<CardSummary> filterCards(List<CardSummary> cards, StatusFilter f) => switch
           final d = duplicateStems(cards);
           return cards.where((c) => d.contains(c.stem)).toList();
         }(),
+      StatusFilter.due => byNextContact(cards),
     };
 
 /// Pure ordering used by the list screen.
@@ -49,6 +50,8 @@ class CardList extends StatefulWidget {
   final Future<void> Function(List<CardSummary> cards)? onDelete;
   /// Share the selected cards (as one vCard) through the system sheet.
   final Future<void> Function(List<CardSummary> cards)? onShare;
+  /// For the 次回連絡日 badge (期限切れ / 連絡 MM/DD); null = now.
+  final DateTime? today;
   final String emptyText;
   /// Show 未確認 / 未登録 under the date for cards that still need work.
   final bool showStatus;
@@ -63,6 +66,7 @@ class CardList extends StatefulWidget {
     required this.onTap,
     this.onDelete,
     this.onShare,
+    this.today,
     this.emptyText = 'まだ名刺がありません。撮影して保存すると、ここに並びます',
     this.showStatus = true,
     this.shrinkWrap = false,
@@ -147,6 +151,7 @@ class _CardListState extends State<CardList> {
     final text = Theme.of(context).textTheme;
     final cards = widget.cards;
     final dups = widget.showStatus ? duplicateStems(cards) : const <String>{};
+    final today = widget.today ?? DateTime.now();
     if (cards.isEmpty) {
       return Center(
         child: Padding(
@@ -197,6 +202,21 @@ class _CardListState extends State<CardList> {
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
               Text(c.scanned ?? '', style: text.labelSmall),
+              if (parseYmd(c.nextContact) case final d?)
+                Container(
+                  margin: const EdgeInsets.only(top: 2),
+                  padding: const EdgeInsets.symmetric(horizontal: AppSpace.unit, vertical: 1),
+                  decoration: BoxDecoration(
+                    color: isOverdue(c, today) ? scheme.errorContainer : scheme.tertiaryContainer,
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: Text(
+                    '${isOverdue(c, today) ? '期限切れ' : '連絡'} '
+                    '${d.month.toString().padLeft(2, '0')}/${d.day.toString().padLeft(2, '0')}',
+                    style: text.labelSmall?.copyWith(
+                        color: isOverdue(c, today) ? scheme.onErrorContainer : scheme.onTertiaryContainer),
+                  ),
+                ),
               if (dups.contains(c.stem))
                 Container(
                   margin: const EdgeInsets.only(top: 2),
@@ -351,6 +371,7 @@ class ListScreen extends StatefulWidget {
   final StatusFilter filter;
   final ValueChanged<StatusFilter>? onFilter;
   final Future<void> Function(List<CardSummary>)? onDelete, onShare;
+  final DateTime? today;
   const ListScreen({
     super.key,
     required this.cards,
@@ -360,6 +381,7 @@ class ListScreen extends StatefulWidget {
     this.onFilter,
     this.onDelete,
     this.onShare,
+    this.today,
   });
 
   @override
@@ -381,7 +403,9 @@ class _ListScreenState extends State<ListScreen> {
     final shown = filterCards(widget.cards, _filter);
     return Column(
       children: [
-        Padding(
+        // Five segments do not fit a 360dp phone at a large font: scroll, never wrap.
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
           padding: const EdgeInsets.fromLTRB(AppSpace.unit, AppSpace.unit, AppSpace.unit, 0),
           child: SegmentedButton<StatusFilter>(
             segments: const [
@@ -389,6 +413,7 @@ class _ListScreenState extends State<ListScreen> {
               ButtonSegment(value: StatusFilter.unreviewed, label: Text('未確認')),
               ButtonSegment(value: StatusFilter.unregistered, label: Text('未登録')),
               ButtonSegment(value: StatusFilter.duplicate, label: Text('重複')),
+              ButtonSegment(value: StatusFilter.due, label: Text('連絡予定')),
             ],
             selected: {_filter},
             onSelectionChanged: (s) {
@@ -411,16 +436,19 @@ class _ListScreenState extends State<ListScreen> {
         ),
         Expanded(
           child: CardList(
-            cards: sortCards(shown, _sort),
+            // 連絡予定 keeps its own order (soonest first) whatever the sort control says.
+            cards: _filter == StatusFilter.due ? shown : sortCards(shown, _sort),
             vault: widget.vault,
             onTap: widget.onTap,
             onDelete: widget.onDelete,
             onShare: widget.onShare,
+            today: widget.today,
             emptyText: widget.cards.isEmpty
                 ? 'まだ名刺がありません。撮影して保存すると、ここに並びます'
                 : switch (_filter) {
                     StatusFilter.unreviewed => '未確認の名刺はありません',
                     StatusFilter.duplicate => '同じ電話番号やメールの名刺はありません',
+                    StatusFilter.due => '次回連絡日を入れた名刺はありません。確認画面の「次回連絡日」で設定できます',
                     _ => '未登録の名刺はありません',
                   },
           ),

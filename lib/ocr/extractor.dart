@@ -20,12 +20,14 @@ class CardFields {
   /// The address-book contact this card is linked to (set when registered
   /// or imported); pushes edits back and stops a second import.
   String? contactId;
+  /// 次回連絡日 (yyyy-mm-dd): the follow-up reminder; empty = none.
+  String? nextContact;
 
   static const keys = [
     'name', 'nameKana', 'nameRoman', 'company', 'dept', 'title',
     'phone', 'mobile', 'fax', 'email', 'url', 'postal', 'address', 'memo',
     'corpNo', 'constructionLicense', 'realEstateLicense', 'qualifications',
-    'division', 'category', 'related', 'job', 'trust', 'contactId',
+    'division', 'category', 'related', 'job', 'trust', 'contactId', 'nextContact',
   ];
 
   void set(String key, String? v) {
@@ -54,6 +56,7 @@ class CardFields {
       case 'job': job = v;
       case 'trust': trust = v;
       case 'contactId': contactId = v;
+      case 'nextContact': nextContact = v;
     }
   }
 
@@ -82,6 +85,7 @@ class CardFields {
         'job': job,
         'trust': trust,
         'contactId': contactId,
+        'nextContact': nextContact,
       };
 }
 

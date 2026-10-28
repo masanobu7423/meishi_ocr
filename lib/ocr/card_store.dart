@@ -7,6 +7,7 @@ import 'package:image/image.dart' as img;
 import 'card_note.dart';
 import 'card_status.dart';
 import 'extractor.dart';
+import 'csv_export.dart';
 import 'jobs.dart';
 import 'learned.dart';
 import 'ocr_line.dart';
@@ -268,6 +269,15 @@ class CardStore {
     return (file, 'BEGIN:VCARD'.allMatches(vcf).length);
   }
 
+  /// Every card as CSV (`vault/_名刺.csv`) for Excel; (file, rows).
+  Future<(File, int)> exportCsv() async {
+    final vault = await _dir('vault').create(recursive: true);
+    final (csv, rows) = csvAndRows(await _notes(vault));
+    final file = File('${vault.path}/_名刺.csv');
+    await file.writeAsString(csv);
+    return (file, rows);
+  }
+
   /// Reads a saved card back for the history screen; null if missing.
   Future<StoredCard?> loadCard(String stem) async {
     if (!_safeStem(stem)) return null;
@@ -440,4 +450,5 @@ CardFields fieldsFromJson(Map<String, String?> j) => CardFields()
   ..related = j['related']
   ..job = j['job']
   ..trust = j['trust']
-  ..contactId = j['contactId'];
+  ..contactId = j['contactId']
+  ..nextContact = j['nextContact'];
