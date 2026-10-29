@@ -26,3 +26,10 @@ List<ContactAction> contactActions(Map<String, String?> f) {
       ContactAction('address', '地図', Uri.parse('geo:0,0?q=${Uri.encodeComponent(address)}')),
   ];
 }
+
+/// The one-tap call from a list row: the mobile first (site people answer
+/// it), else the office line; null when the card has neither.
+ContactAction? quickCall({String? phone, String? mobile}) {
+  final a = contactActions({'phone': phone, 'mobile': mobile});
+  return a.where((x) => x.key == 'mobile').firstOrNull ?? a.firstOrNull;
+}

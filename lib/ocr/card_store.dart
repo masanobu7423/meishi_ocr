@@ -128,15 +128,25 @@ class CardStore {
 
   /// Changes only the status of a stored card (its data, images and scan
   /// date stay). False when nothing is stored under [stem].
-  Future<bool> setStatus(String stem, CardStatus status, {String? contactId}) async {
+  Future<bool> setStatus(String stem, CardStatus status, {String? contactId}) =>
+      _resave(stem, (c) => (status, {...c.expected, 'contactId': ?contactId}));
+
+  /// Sets or clears (null) only the 次回連絡日 (連絡済み in the list).
+  Future<bool> setNextContact(String stem, String? ymd) =>
+      _resave(stem, (c) => (c.status, {...c.expected, 'nextContact': ymd}));
+
+  /// Re-saves a stored card with a new status / fields; lines, images and
+  /// the first scan date stay. False when the card is missing.
+  Future<bool> _resave(String stem, (CardStatus, Map<String, String?>) Function(StoredCard) change) async {
     final c = await loadCard(stem);
     if (c == null) return false;
+    final (status, expected) = change(c);
     await saveCard(
       stem: stem,
       front: c.front,
       frontRaw: c.frontRaw,
       back: c.back,
-      expected: {...c.expected, 'contactId': ?contactId},
+      expected: expected,
       frontImage: c.frontImage,
       backImage: c.backImage,
       status: status,

@@ -5,10 +5,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_contacts/flutter_contacts.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import 'card_list.dart';
+import 'choice_sheet.dart';
 import 'home_screen.dart';
 import 'main.dart';
+import 'ocr/actions.dart';
 import 'ocr/card_status.dart';
 import 'ocr/card_store.dart';
 import 'ocr/contact_mapper.dart';
@@ -92,6 +95,76 @@ class _HomeShellState extends State<HomeShell> {
       return;
     }
     _reload(); // re-reads jobs.json (an empty list falls back to the defaults)
+  }
+
+  /// The row's call button: the mobile first, else the office line.
+  Future<void> _call(CardSummary c) async {
+    final a = quickCall(phone: c.phone, mobile: c.mobile);
+    if (a == null) return;
+    if (!await launchUrl(a.uri, mode: LaunchMode.externalApplication) && mounted) {
+      _toast('電話アプリを開けません');
+    }
+  }
+
+  /// 連絡済み: clear the 次回連絡日 of the selected cards. The phone book's
+  /// note follows the next time the card is saved, as for any other edit.
+  Future<void> _followedUp(List<CardSummary> cards) async {
+    final (store, _) = await _ready;
+    var n = 0;
+    for (final c in cards) {
+      try {
+        if (await store.setNextContact(c.stem, null)) n++;
+      } catch (e) {
+        await store.appendError('setNextContact ${c.stem}', e);
+      }
+    }
+    _reload();
+    if (!mounted) return;
+    final count = n == cards.length ? '$n 件' : '${cards.length} 件中 $n 件';
+    // The contact's note keeps its 次回連絡 line until the card is saved again.
+    final linked = cards.any((c) => c.status == CardStatus.registered);
+    _toast('$countを連絡済みにしました${linked ? "。電話帳のメモは、その名刺を次に保存したときに更新されます" : ""}');
+  }
+
+  /// The menu: four rarely used groups. Exports and backups open a sheet
+  /// that says what each one is for.
+  Future<void> _menu(String v) async {
+    final sheet = switch (v) {
+      'phonebook' => ('電話帳', const [
+          Choice('sync', Icons.person_add_alt_outlined, '未登録の名刺を電話帳に登録',
+              '確認済みで電話帳にない名刺を、登録先のアカウントにまとめて入れます'),
+          Choice('import_contacts', Icons.contacts_outlined, '電話帳から取り込む',
+              '電話帳の連絡先を名刺として取り込み、職種や信頼度で探せるようにします'),
+        ]),
+      'export' => ('書き出し・共有', const [
+          Choice('share_csv', Icons.table_chart_outlined, '全件を CSV で共有', 'Excel で開く一覧表。メールやドライブに送れます'),
+          Choice('share_vcard', Icons.contact_page_outlined, '全件を vCard で共有', '別のスマホやパソコンの連絡先アプリに読み込めます'),
+          Choice('share_ics', Icons.event_outlined, '連絡予定を共有（ics）', '次回連絡日をカレンダーアプリにまとめて読み込めます'),
+          Choice('vcard', Icons.save_alt_outlined, '全件を vCard でアプリのフォルダに保存', 'パソコンにつないで取り出すとき用'),
+        ]),
+      'backup' => ('バックアップ', const [
+          Choice('share_backup', Icons.cloud_upload_outlined, 'バックアップを共有', 'ドライブやメールに保存。機種変更やアンインストールに備えます'),
+          Choice('backup', Icons.archive_outlined, 'バックアップを作る', 'アプリのフォルダに保存します（毎日 1 回は自動で作ります）'),
+          Choice('restore', Icons.restore, 'バックアップから復元', '保存したバックアップの名刺を取り込みます'),
+        ]),
+      _ => null,
+    };
+    final picked = sheet == null ? v : await showChoiceSheet(context, sheet.$1, sheet.$2);
+    if (!mounted) return;
+    await switch (picked) {
+      'account' => _chooseAccount(),
+      'sync' => _syncAll(),
+      'import_contacts' => _importContacts(),
+      'vcard' => _exportVcard(),
+      'share_vcard' => _shareAllVcard(),
+      'share_csv' => _shareCsv(),
+      'share_ics' => _shareIcs(),
+      'share_backup' => _shareBackup(),
+      'jobs' => _editJobs(),
+      'restore' => _restore(),
+      'backup' => _backup(),
+      _ => Future<void>.value(),
+    };
   }
 
   /// Selected cards as one vCard through the system share sheet.
@@ -429,31 +502,14 @@ class _HomeShellState extends State<HomeShell> {
             ),
           PopupMenuButton<String>(
             tooltip: 'その他',
-            onSelected: (v) => switch (v) {
-              'account' => _chooseAccount(),
-              'sync' => _syncAll(),
-              'import_contacts' => _importContacts(),
-              'vcard' => _exportVcard(),
-              'share_vcard' => _shareAllVcard(),
-              'share_csv' => _shareCsv(),
-              'share_ics' => _shareIcs(),
-              'share_backup' => _shareBackup(),
-              'jobs' => _editJobs(),
-              'restore' => _restore(),
-              _ => _backup(),
-            },
+            onSelected: _menu,
             itemBuilder: (_) => const [
+              PopupMenuItem(value: 'phonebook', child: Text('電話帳と同期')),
+              PopupMenuItem(value: 'export', child: Text('書き出し・共有')),
+              PopupMenuItem(value: 'backup', child: Text('バックアップ')),
+              PopupMenuDivider(),
               PopupMenuItem(value: 'account', child: Text('登録先のアカウント')),
-              PopupMenuItem(value: 'sync', child: Text('未登録の名刺を電話帳に登録')),
-              PopupMenuItem(value: 'import_contacts', child: Text('電話帳から取り込む')),
               PopupMenuItem(value: 'jobs', child: Text('職種の一覧を編集')),
-              PopupMenuItem(value: 'share_vcard', child: Text('全件を vCard で共有')),
-              PopupMenuItem(value: 'vcard', child: Text('全件を vCard に書き出す')),
-              PopupMenuItem(value: 'share_csv', child: Text('全件を CSV で共有（Excel 用）')),
-              PopupMenuItem(value: 'share_ics', child: Text('連絡予定をカレンダーに書き出す（ics）')),
-              PopupMenuItem(value: 'share_backup', child: Text('バックアップを共有')),
-              PopupMenuItem(value: 'backup', child: Text('バックアップを作る')),
-              PopupMenuItem(value: 'restore', child: Text('バックアップから復元')),
             ],
           ),
         ],
@@ -508,13 +564,20 @@ class _HomeShellState extends State<HomeShell> {
                 jobs: _jobs,
               ),
               SearchScreen(
-                  cards: cards, vault: store.vaultDir, onTap: _open, onDelete: _deleteCards, onShare: _shareCards),
+                  cards: cards,
+                  vault: store.vaultDir,
+                  onTap: _open,
+                  onCall: _call,
+                  onDelete: _deleteCards,
+                  onShare: _shareCards),
               ListScreen(
                 cards: cards,
                 vault: store.vaultDir,
                 onTap: _open,
                 onDelete: _deleteCards,
                 onShare: _shareCards,
+                onFollowedUp: _followedUp,
+                onCall: _call,
                 filter: _listFilter,
                 onFilter: (f) => setState(() => _listFilter = f),
               ),

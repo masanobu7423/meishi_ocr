@@ -21,6 +21,8 @@ class CardSummary {
   final String? contactId;
   /// 次回連絡日 (yyyy-mm-dd) when a follow-up is planned.
   final String? nextContact;
+  /// 都道府県 from the address (the note's `pref`), for the ledger filter.
+  final String? pref;
   final CardStatus status;
 
   const CardSummary({
@@ -45,6 +47,7 @@ class CardSummary {
     this.trust,
     this.contactId,
     this.nextContact,
+    this.pref,
     this.status = CardStatus.reviewed,
   });
 
@@ -83,6 +86,7 @@ List<CardSummary> cardSummaries(Map<String, String> notes) {
       trust: fm['trust'],
       contactId: fm['contact_id'],
       nextContact: fm['next_contact'],
+      pref: fm['pref'],
       status: parseStatus(fm['status']),
     ));
   }
@@ -90,12 +94,15 @@ List<CardSummary> cardSummaries(Map<String, String> notes) {
   return out;
 }
 
-/// Text search narrowed by 職種 and a minimum 信頼度 (cards without a
-/// rating never pass a minimum).
-List<CardSummary> searchCards(List<CardSummary> cards, {String query = '', String? job, int minTrust = 0}) => [
+/// Text search narrowed by 職種, 都道府県 and a minimum 信頼度 (cards without
+/// a rating never pass a minimum).
+List<CardSummary> searchCards(List<CardSummary> cards,
+        {String query = '', String? job, String? pref, int minTrust = 0}) =>
+    [
       for (final c in cards)
         if (c.matches(query) &&
             (job == null || c.job == job) &&
+            (pref == null || c.pref == pref) &&
             (minTrust == 0 || (int.tryParse(c.trust ?? '') ?? 0) >= minTrust))
           c,
     ];
@@ -118,10 +125,15 @@ bool isOverdue(CardSummary c, DateTime today) {
 }
 
 /// Every 職種 in use, most used first (ties keep first-seen order).
-List<String> jobsOf(List<CardSummary> cards) {
+List<String> jobsOf(List<CardSummary> cards) => _mostUsed(cards.map((c) => c.job));
+
+/// Every 都道府県 in use, most used first.
+List<String> prefsOf(List<CardSummary> cards) => _mostUsed(cards.map((c) => c.pref));
+
+List<String> _mostUsed(Iterable<String?> values) {
   final n = <String, int>{};
-  for (final c in cards) {
-    if (c.job case final j? when j.isNotEmpty) n.update(j, (x) => x + 1, ifAbsent: () => 1);
+  for (final v in values) {
+    if (v != null && v.isNotEmpty) n.update(v, (x) => x + 1, ifAbsent: () => 1);
   }
   return n.keys.toList()..sort((a, b) => n[b]!.compareTo(n[a]!));
 }

@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 
+import 'ocr/actions.dart';
 import 'ocr/card_status.dart';
 import 'ocr/history.dart';
 import 'theme.dart';
@@ -59,6 +60,12 @@ class CardList extends StatefulWidget {
   /// another scroll view, e.g. the home screen); the selection bar then adds
   /// height instead of squeezing the rows.
   final bool shrinkWrap;
+  /// A call button on rows with a number (see [quickCall]).
+  final ValueChanged<CardSummary>? onCall;
+  /// Company order with a 「会社（N 人）」 header above each company.
+  final bool groupByCompany;
+  /// 連絡済み in the selection bar: the selected cards that have a 次回連絡日.
+  final Future<void> Function(List<CardSummary> cards)? onFollowedUp;
   const CardList({
     super.key,
     required this.cards,
@@ -70,6 +77,9 @@ class CardList extends StatefulWidget {
     this.emptyText = 'まだ名刺がありません。撮影して保存すると、ここに並びます',
     this.showStatus = true,
     this.shrinkWrap = false,
+    this.onCall,
+    this.groupByCompany = false,
+    this.onFollowedUp,
   });
 
   @override
@@ -123,6 +133,16 @@ class _CardListState extends State<CardList> {
                 icon: const Icon(Icons.edit_outlined, size: AppSize.iconSmall),
                 label: const Text('修正'),
               ),
+            if (widget.onFollowedUp != null && _chosen.any((c) => c.nextContact != null))
+              TextButton.icon(
+                onPressed: () {
+                  final dated = _chosen.where((c) => c.nextContact != null).toList();
+                  setState(_selected.clear);
+                  widget.onFollowedUp!(dated);
+                },
+                icon: const Icon(Icons.event_available_outlined, size: AppSize.iconSmall),
+                label: const Text('連絡済み'),
+              ),
             if (widget.onShare != null)
               TextButton.icon(
                 onPressed: () {
@@ -149,7 +169,13 @@ class _CardListState extends State<CardList> {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final text = Theme.of(context).textTheme;
-    final cards = widget.cards;
+    final cards = widget.groupByCompany ? sortCards(widget.cards, CardSort.company) : widget.cards;
+    final heads = <String, int>{};
+    if (widget.groupByCompany) {
+      for (final c in cards) {
+        heads.update(_company(c), (n) => n + 1, ifAbsent: () => 1);
+      }
+    }
     final dups = widget.showStatus ? duplicateStems(cards) : const <String>{};
     final today = widget.today ?? DateTime.now();
     if (cards.isEmpty) {
@@ -170,8 +196,19 @@ class _CardListState extends State<CardList> {
         final c = cards[i];
         final img = c.imageFront == null ? null : File('${widget.vault.path}/${c.imageFront}');
         final selected = _selected.contains(c.stem);
+        final call = widget.onCall == null || _selecting ? null : quickCall(phone: c.phone, mobile: c.mobile);
+        final header = widget.groupByCompany && (i == 0 || _company(cards[i - 1]) != _company(c))
+            ? Padding(
+                padding: EdgeInsets.only(top: i == 0 ? 0 : AppSpace.unit, bottom: AppSpace.unit),
+                child: Semantics(
+                  header: true,
+                  child: Text('${_company(c)}（${heads[_company(c)]} 人）',
+                      style: text.titleSmall?.copyWith(color: scheme.primary)),
+                ),
+              )
+            : null;
         // Rows as raised white cards on the white page (案 A, 立体).
-        return Card(
+        final row = Card(
           color: selected ? scheme.primaryContainer : scheme.surface,
           clipBehavior: Clip.antiAlias,
           child: ListTile(
@@ -189,34 +226,52 @@ class _CardListState extends State<CardList> {
                           color: scheme.onSurfaceVariant, semanticLabel: '写真なし'),
                 ),
           title: Text(c.name),
-          subtitle: Text([
-            if (c.category != null) '［${c.category}］',
-            if (c.company != null) c.company!,
-            if (c.title != null) c.title!,
-            if (c.job != null) '職種 ${c.job}',
-            if (c.trust != null) '信頼度 ${c.trust}',
-            if (c.memo != null) c.memo!,
-          ].join('　')),
-          trailing: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            crossAxisAlignment: CrossAxisAlignment.end,
+          // Date and badges wrap under the text, not in the trailing slot:
+          // a trailing column overflowed the tile height at a large font.
+          subtitle: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(c.scanned ?? '', style: text.labelSmall),
-              if (parseYmd(c.nextContact) case final d?)
-                isOverdue(c, today)
-                    ? _Pill('期限切れ ${_md(d)}', scheme.errorContainer, scheme.onErrorContainer)
-                    : _Pill('連絡 ${_md(d)}', scheme.tertiaryContainer, scheme.onTertiaryContainer),
-              if (dups.contains(c.stem)) _Pill('重複', scheme.secondaryContainer, scheme.onSecondaryContainer),
-              if (widget.showStatus && c.status == CardStatus.unreviewed)
-                _Pill('未確認', scheme.errorContainer, scheme.onErrorContainer)
-              else if (widget.showStatus && c.status == CardStatus.reviewed)
-                _Pill('未登録', scheme.tertiaryContainer, scheme.onTertiaryContainer),
+              Text([
+                if (c.category != null) '［${c.category}］',
+                if (c.company != null) c.company!,
+                if (c.title != null) c.title!,
+                if (c.job != null) '職種 ${c.job}',
+                if (c.trust != null) '信頼度 ${c.trust}',
+                if (c.memo != null) c.memo!,
+              ].join('　')),
+              Wrap(
+                spacing: AppSpace.unit / 2,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  if (c.scanned != null) Text(c.scanned!, style: text.labelSmall),
+                  if (parseYmd(c.nextContact) case final d?)
+                    isOverdue(c, today)
+                        ? _Pill('期限切れ ${_md(d)}', scheme.errorContainer, scheme.onErrorContainer)
+                        : _Pill('連絡 ${_md(d)}', scheme.tertiaryContainer, scheme.onTertiaryContainer),
+                  if (dups.contains(c.stem)) _Pill('重複', scheme.secondaryContainer, scheme.onSecondaryContainer),
+                  if (widget.showStatus && c.status == CardStatus.unreviewed)
+                    _Pill('未確認', scheme.errorContainer, scheme.onErrorContainer)
+                  else if (widget.showStatus && c.status == CardStatus.reviewed)
+                    _Pill('未登録', scheme.tertiaryContainer, scheme.onTertiaryContainer),
+                ],
+              ),
             ],
           ),
+          trailing: call == null
+              ? null
+              : IconButton(
+                  tooltip: call.key == 'mobile' ? '携帯に電話' : '電話',
+                  color: scheme.primary,
+                  icon: const Icon(Icons.call_outlined),
+                  onPressed: () => widget.onCall!(c),
+                ),
           onTap: () => _selecting ? _toggle(c) : widget.onTap(c),
           onLongPress: widget.onDelete == null ? null : () => _toggle(c),
           ),
         );
+        return header == null
+            ? row
+            : Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [header, row]);
       },
     );
     if (!_selecting) return list;
@@ -226,14 +281,22 @@ class _CardListState extends State<CardList> {
   }
 }
 
-/// 検索: a search box over name / company / title / memo.
+/// 検索 = the partner ledger: text, 職種, 都道府県 and 信頼度 narrow the
+/// cards; they can be grouped by company and called from the row.
 class SearchScreen extends StatefulWidget {
   final List<CardSummary> cards;
   final Directory vault;
   final ValueChanged<CardSummary> onTap;
+  final ValueChanged<CardSummary>? onCall;
   final Future<void> Function(List<CardSummary>)? onDelete, onShare;
   const SearchScreen(
-      {super.key, required this.cards, required this.vault, required this.onTap, this.onDelete, this.onShare});
+      {super.key,
+      required this.cards,
+      required this.vault,
+      required this.onTap,
+      this.onCall,
+      this.onDelete,
+      this.onShare});
 
   @override
   State<SearchScreen> createState() => _SearchScreenState();
@@ -241,18 +304,42 @@ class SearchScreen extends StatefulWidget {
 
 class _SearchScreenState extends State<SearchScreen> {
   String _query = '';
-  String? _job;
+  String? _job, _pref;
   int _minTrust = 0;
+  bool _byCompany = false;
+
+  /// One scrolling line of chips (never wraps into a tall block): the
+  /// values in use, tap again to clear.
+  Widget _chips(String label, List<String> values, String? selected, ValueChanged<String?> pick) =>
+      SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.fromLTRB(AppSpace.gutter, AppSpace.unit, AppSpace.gutter, 0),
+        child: Row(children: [
+          Text(label,
+              style: Theme.of(context).textTheme.labelLarge?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant)),
+          for (final v in values)
+            Padding(
+              padding: const EdgeInsets.only(left: AppSpace.unit),
+              child: FilterChip(label: Text(v), selected: selected == v, onSelected: (on) => pick(on ? v : null)),
+            ),
+        ]),
+      );
 
   @override
   Widget build(BuildContext context) {
     final text = Theme.of(context).textTheme;
     final scheme = Theme.of(context).colorScheme;
     final jobs = jobsOf(widget.cards);
+    final prefs = prefsOf(widget.cards);
     if (_job != null && !jobs.contains(_job)) _job = null;
+    if (_pref != null && !prefs.contains(_pref)) _pref = null;
     final hits = sortCards(
-        searchCards(widget.cards, query: _query, job: _job, minTrust: _minTrust), CardSort.date);
-    return Column(
+        searchCards(widget.cards, query: _query, job: _job, pref: _pref, minTrust: _minTrust), CardSort.date);
+    // A short body (keyboard open, small phone) keeps the text box, the
+    // count and the list; the chip and 信頼度 rows come back with the room.
+    return LayoutBuilder(builder: (context, box) {
+      final roomy = box.maxHeight >= 420;
+      return Column(
       children: [
         Padding(
           padding: const EdgeInsets.fromLTRB(AppSpace.gutter, AppSpace.unit, AppSpace.gutter, 0),
@@ -265,25 +352,11 @@ class _SearchScreenState extends State<SearchScreen> {
             onChanged: (v) => setState(() => _query = v),
           ),
         ),
-        // 職種 chips (only the values in use) and a minimum 信頼度: the two
-        // axes the Obsidian analysis groups by, so the app can answer the
-        // same questions on the spot.
-        if (jobs.isNotEmpty)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(AppSpace.gutter, AppSpace.unit, AppSpace.gutter, 0),
-            child: Wrap(
-              spacing: AppSpace.unit,
-              runSpacing: AppSpace.unit / 2,
-              children: [
-                for (final j in jobs)
-                  FilterChip(
-                    label: Text(j),
-                    selected: _job == j,
-                    onSelected: (on) => setState(() => _job = on ? j : null),
-                  ),
-              ],
-            ),
-          ),
+        // 職種 and 都道府県 chips (only the values in use) and a minimum
+        // 信頼度: the axes the Obsidian analysis groups by, answered on the spot.
+        if (roomy && jobs.isNotEmpty) _chips('職種', jobs, _job, (v) => setState(() => _job = v)),
+        if (roomy && prefs.isNotEmpty) _chips('地域', prefs, _pref, (v) => setState(() => _pref = v)),
+        if (roomy)
         Padding(
           padding: const EdgeInsets.fromLTRB(AppSpace.gutter, AppSpace.unit, AppSpace.gutter, 0),
           child: Row(
@@ -305,7 +378,19 @@ class _SearchScreenState extends State<SearchScreen> {
                   onSelectionChanged: (s) => setState(() => _minTrust = s.first),
                 ),
               ),
-              const SizedBox(width: AppSpace.unit),
+            ],
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(AppSpace.gutter, AppSpace.unit, AppSpace.gutter, 0),
+          child: Row(
+            children: [
+              FilterChip(
+                label: const Text('会社でまとめる'),
+                selected: _byCompany,
+                onSelected: (on) => setState(() => _byCompany = on),
+              ),
+              const Spacer(),
               Text('${hits.length} 件', style: text.labelLarge),
             ],
           ),
@@ -315,6 +400,8 @@ class _SearchScreenState extends State<SearchScreen> {
             cards: hits,
             vault: widget.vault,
             onTap: widget.onTap,
+            onCall: widget.onCall,
+            groupByCompany: _byCompany,
             onDelete: widget.onDelete,
             onShare: widget.onShare,
             emptyText: widget.cards.isEmpty
@@ -324,6 +411,7 @@ class _SearchScreenState extends State<SearchScreen> {
         ),
       ],
     );
+    });
   }
 }
 
@@ -335,7 +423,8 @@ class ListScreen extends StatefulWidget {
   /// Status filter; the shell owns it so the home screen can preset it.
   final StatusFilter filter;
   final ValueChanged<StatusFilter>? onFilter;
-  final Future<void> Function(List<CardSummary>)? onDelete, onShare;
+  final Future<void> Function(List<CardSummary>)? onDelete, onShare, onFollowedUp;
+  final ValueChanged<CardSummary>? onCall;
   final DateTime? today;
   const ListScreen({
     super.key,
@@ -346,6 +435,8 @@ class ListScreen extends StatefulWidget {
     this.onFilter,
     this.onDelete,
     this.onShare,
+    this.onFollowedUp,
+    this.onCall,
     this.today,
   });
 
@@ -407,6 +498,8 @@ class _ListScreenState extends State<ListScreen> {
             onTap: widget.onTap,
             onDelete: widget.onDelete,
             onShare: widget.onShare,
+            onFollowedUp: widget.onFollowedUp,
+            onCall: widget.onCall,
             today: widget.today,
             emptyText: widget.cards.isEmpty
                 ? 'まだ名刺がありません。撮影して保存すると、ここに並びます'
@@ -422,6 +515,8 @@ class _ListScreenState extends State<ListScreen> {
     );
   }
 }
+
+String _company(CardSummary c) => c.company ?? '会社名なし';
 
 String _md(DateTime d) => '${d.month.toString().padLeft(2, '0')}/${d.day.toString().padLeft(2, '0')}';
 

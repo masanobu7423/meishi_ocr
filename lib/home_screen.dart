@@ -48,6 +48,19 @@ class HomeScreen extends StatelessWidget {
     final month = '${today.year}-${today.month.toString().padLeft(2, '0')}';
     final thisMonth = cards.where((c) => (c.scanned ?? '').startsWith(month)).length;
     final recent = sortCards(cards, CardSort.date).take(5).toList();
+    final due = dueCards(cards, today: today).length;
+    final dups = duplicateStems(cards).length;
+    Widget tile(String label, int n, String unit, StatusFilter f) => InkWell(
+          borderRadius: BorderRadius.circular(AppRadius.large),
+          onTap: () => onContinue!(f),
+          child: _Stat(label: label, value: '$n', unit: unit),
+        );
+    final todo = [
+      tile('未確認', cards.where((c) => c.status == CardStatus.unreviewed).length, '枚', StatusFilter.unreviewed),
+      tile('未登録', cards.where((c) => c.status != CardStatus.registered).length, '枚', StatusFilter.unregistered),
+      if (due > 0) tile('連絡予定', due, '件', StatusFilter.due),
+      if (dups > 0) tile('重複', dups, '枚', StatusFilter.duplicate),
+    ];
 
     return ListView(
       padding: const EdgeInsets.all(AppSpace.gutter),
@@ -63,56 +76,20 @@ class HomeScreen extends StatelessWidget {
             ),
           ],
         ),
-        if (onContinue != null) ...[
-          const SizedBox(height: AppSpace.unit),
-          Row(
-            children: [
-              Expanded(
-                child: InkWell(
-                  borderRadius: BorderRadius.circular(AppRadius.medium),
-                  onTap: () => onContinue!(StatusFilter.unreviewed),
-                  child: _Stat(
-                      label: '未確認',
-                      value: '${cards.where((c) => c.status == CardStatus.unreviewed).length}',
-                      unit: '枚'),
-                ),
+        // What still needs work, two tiles per row so four never squeeze a
+        // 360dp phone. 連絡予定 and 重複 only appear when there is something.
+        if (onContinue != null)
+          for (var i = 0; i < todo.length; i += 2)
+            Padding(
+              padding: const EdgeInsets.only(top: AppSpace.unit),
+              child: Row(
+                children: [
+                  Expanded(child: todo[i]),
+                  const SizedBox(width: AppSpace.unit),
+                  Expanded(child: i + 1 < todo.length ? todo[i + 1] : const SizedBox()),
+                ],
               ),
-              const SizedBox(width: AppSpace.unit),
-              Expanded(
-                child: InkWell(
-                  borderRadius: BorderRadius.circular(AppRadius.medium),
-                  onTap: () => onContinue!(StatusFilter.unregistered),
-                  child: _Stat(
-                      label: '未登録',
-                      value: '${cards.where((c) => c.status != CardStatus.registered).length}',
-                      unit: '枚'),
-                ),
-              ),
-              // Only when a follow-up is overdue or due this week.
-              if (dueCards(cards, today: today).isNotEmpty) ...[
-                const SizedBox(width: AppSpace.unit),
-                Expanded(
-                  child: InkWell(
-                    borderRadius: BorderRadius.circular(AppRadius.medium),
-                    onTap: () => onContinue!(StatusFilter.due),
-                    child: _Stat(label: '連絡予定', value: '${dueCards(cards, today: today).length}', unit: '件'),
-                  ),
-                ),
-              ],
-              // Only when there is something to clean up: the same card read twice.
-              if (duplicateStems(cards).isNotEmpty) ...[
-                const SizedBox(width: AppSpace.unit),
-                Expanded(
-                  child: InkWell(
-                    borderRadius: BorderRadius.circular(AppRadius.medium),
-                    onTap: () => onContinue!(StatusFilter.duplicate),
-                    child: _Stat(label: '重複', value: '${duplicateStems(cards).length}', unit: '枚'),
-                  ),
-                ),
-              ],
-            ],
-          ),
-        ],
+            ),
         const SizedBox(height: AppSpace.gutter),
         FilledButton.icon(
           onPressed: onScan,

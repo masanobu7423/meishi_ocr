@@ -121,10 +121,10 @@ frontmatter キー）が唯一の宣言で、JSON・ノート読み戻し・`set
 |---|---|---|
 | ホーム | `lib/home_screen.dart` | 保存枚数・今月の枚数、名刺を撮影 / アルバムから / まとめて取込、最近の 5 枚（タップでスキャン画面に開く）、すべて見る |
 | スキャン | `lib/main.dart` | 下記の確認画面。他タブから名刺を開くとここに表示される |
-| 検索 | `lib/card_list.dart` `SearchScreen` | 文字検索に加え、職種チップ（使用中の値だけ）と信頼度の下限（全て / 3+ / 4+ / 5）で絞り込み、件数表示。Obsidian 側の集計軸と同じ |
-| 一覧 | `lib/card_list.dart` `ListScreen` | 新しい順 / 会社順 / 氏名順の切替 |
+| 検索 | `lib/card_list.dart` `SearchScreen` | 協力会社台帳。文字検索に加え、職種と地域（都道府県）のチップ（使用中の値だけ、1 行スクロール）と信頼度の下限（全て / 3+ / 4+ / 5）で絞り込み、「会社でまとめる」で会社名（N 人）の見出し、件数表示。行の電話ボタンで携帯（なければ代表）にかける |
+| 一覧 | `lib/card_list.dart` `ListScreen` | 新しい順 / 会社順 / 氏名順の切替、状態の絞り込み、電話ボタン、選択バーの「連絡済み」（`CardStore.setNextContact` で次回連絡日を消す。電話帳のメモは次にその名刺を保存したときに追従） |
 
-vCard 書き出しとバックアップは右上メニュー。`test/card_list_test.dart` と `test/home_screen_test.dart` が並び順・絞り込み・ホームの集計を固定。
+右上メニューは 5 項目（電話帳と同期 / 書き出し・共有 / バックアップ / 登録先のアカウント / 職種の一覧を編集）。前の 3 つは `lib/choice_sheet.dart` の `showChoiceSheet` で、用途の説明付きの選択肢を出す。ホームの件数タイルは 2 列で折り返す（4 枚横並びだと 360dp・文字 1.3 倍ではみ出していた）。`test/ledger_test.dart` が台帳・タイル・連絡済み・シートを固定。`test/card_list_test.dart` と `test/home_screen_test.dart` が並び順・絞り込み・ホームの集計を固定。
 
 ## スキャン画面（`lib/main.dart` + `lib/card_form.dart` + `lib/theme.dart`）
 
@@ -355,7 +355,7 @@ inbox に残り、件数を通知する。確認は取込直後のレビュー�
 
 氏名・ふりがな・会社・役職・メモに加えて、電話・携帯・メールも検索する。比較は大文字小文字・全角半角・ひらがなカタカナを
 区別せず、空白とハイフンを無視するので、`0312345678` でも `1234-5678` でも `03-1234-5678` の名刺に当たる。
-職種も文字検索の対象。`searchCards(cards, query:, job:, minTrust:)` が検索画面の絞り込み（職種は完全一致、信頼度は
+職種も文字検索の対象。`searchCards(cards, query:, job:, pref:, minTrust:)` が検索画面の絞り込み（職種と都道府県は完全一致、信頼度は
 数値の下限。未設定の名刺は下限を付けると外れる）。
 
 ## Google の電話帳との同期（`lib/ocr/sync.dart`、`lib/ocr/contact_mapper.dart`）
