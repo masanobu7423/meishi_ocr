@@ -2,6 +2,7 @@ import 'package:flutter_contacts/flutter_contacts.dart';
 
 import 'dates.dart';
 import 'extractor.dart';
+import 'fields.dart';
 import 'romaji.dart';
 
 /// ひらがな -> カタカナ (contacts' phonetic fields are katakana by convention).
@@ -150,6 +151,25 @@ Contact applyCard(Contact existing, CardFields f, {required DateTime scannedAt})
 /// A note line this app wrote: a labelled field or the 名刺取込 link line.
 bool _isOurLine(String t) =>
     t.startsWith('名刺取込') || _noteKeys.keys.any((k) => t.startsWith('$k:') || t.startsWith('$k：'));
+
+/// 電話帳の内容を取り込む: the form fields the contact should overwrite.
+/// [current] = the form's trimmed values, [theirs] = fieldsFromContact(...)
+/// .toJson(). Only form fields; empty contact values never overwrite; the
+/// `<division> ` prefix toContact puts on the department is taken off; a
+/// hiragana reading equal to the stored katakana is no change.
+Map<String, String> pullChanges(Map<String, String> current, Map<String, String?> theirs) {
+  final division = current['division'] ?? '';
+  final out = <String, String>{};
+  for (final k in fieldOrder) {
+    var v = theirs[k]?.trim() ?? '';
+    final mine = current[k] ?? '';
+    if (k == 'dept' && division.isNotEmpty && v.startsWith('$division ')) v = v.substring(division.length + 1);
+    if (v.isEmpty || v == mine) continue;
+    if (k == 'nameKana' && hiraToKata(normalize(mine)) == v) continue;
+    out[k] = v;
+  }
+  return out;
+}
 
 /// Digits only, +81 folded to a leading 0, for comparing phone numbers.
 String phoneDigits(String s) {

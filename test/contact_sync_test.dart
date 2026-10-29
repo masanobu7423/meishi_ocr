@@ -123,4 +123,29 @@ void main() {
     expect((card!.expected['contactId'], card.status), ('9', CardStatus.registered));
     expect(parseFrontmatter((await store.notes()).values.single)['contact_id'], '9');
   });
+
+  group('pullChanges', () {
+    final current = {
+      'name': '山田 太郎', 'nameKana': 'やまだ たろう', 'division': '営業本部', 'dept': '営業部',
+      'phone': '03-1234-5678', 'email': '', 'memo': '展示会',
+    };
+    test('takes what the contact has and the form lacks or differs in', () {
+      final theirs = {
+        'name': '山田 太郎', 'nameKana': 'ヤマダ タロウ', 'dept': '営業本部 営業部',
+        'phone': '03-9999-0000', 'email': 'new@example.com', 'memo': null, 'contactId': '42',
+      };
+      expect(pullChanges(current, theirs), {'phone': '03-9999-0000', 'email': 'new@example.com'});
+    });
+    test('the division prefix written by toContact is taken off the department', () {
+      expect(pullChanges(current, {'dept': '営業本部 工事部'}), {'dept': '工事部'});
+      expect(pullChanges({...current, 'division': ''}, {'dept': '営業本部 営業部'}), {'dept': '営業本部 営業部'});
+    });
+    test('a hiragana reading equal to the stored katakana is not a change; empty values never overwrite', () {
+      expect(pullChanges(current, {'nameKana': 'ヤマダ タロウ', 'memo': '', 'name': null}), isEmpty);
+      expect(pullChanges(current, {'nameKana': 'ヤマダ ハナコ'}), {'nameKana': 'ヤマダ ハナコ'});
+    });
+    test('only form fields are pulled (hidden ones like contactId are not)', () {
+      expect(pullChanges(current, {'contactId': '99'}), isEmpty);
+    });
+  });
 }

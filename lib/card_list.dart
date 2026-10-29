@@ -203,49 +203,14 @@ class _CardListState extends State<CardList> {
             children: [
               Text(c.scanned ?? '', style: text.labelSmall),
               if (parseYmd(c.nextContact) case final d?)
-                Container(
-                  margin: const EdgeInsets.only(top: 2),
-                  padding: const EdgeInsets.symmetric(horizontal: AppSpace.unit, vertical: 1),
-                  decoration: BoxDecoration(
-                    color: isOverdue(c, today) ? scheme.errorContainer : scheme.tertiaryContainer,
-                    borderRadius: BorderRadius.circular(999),
-                  ),
-                  child: Text(
-                    '${isOverdue(c, today) ? '期限切れ' : '連絡'} '
-                    '${d.month.toString().padLeft(2, '0')}/${d.day.toString().padLeft(2, '0')}',
-                    style: text.labelSmall?.copyWith(
-                        color: isOverdue(c, today) ? scheme.onErrorContainer : scheme.onTertiaryContainer),
-                  ),
-                ),
-              if (dups.contains(c.stem))
-                Container(
-                  margin: const EdgeInsets.only(top: 2),
-                  padding: const EdgeInsets.symmetric(horizontal: AppSpace.unit, vertical: 1),
-                  decoration: BoxDecoration(
-                    color: scheme.secondaryContainer,
-                    borderRadius: BorderRadius.circular(999),
-                  ),
-                  child: Text('重複',
-                      style: text.labelSmall?.copyWith(color: scheme.onSecondaryContainer)),
-                ),
-              if (widget.showStatus && c.status != CardStatus.registered)
-                Container(
-                  margin: const EdgeInsets.only(top: 2),
-                  padding: const EdgeInsets.symmetric(horizontal: AppSpace.unit, vertical: 1),
-                  decoration: BoxDecoration(
-                    color: c.status == CardStatus.unreviewed
-                        ? scheme.errorContainer
-                        : scheme.tertiaryContainer,
-                    borderRadius: BorderRadius.circular(999),
-                  ),
-                  child: Text(
-                    c.status == CardStatus.unreviewed ? '未確認' : '未登録',
-                    style: text.labelSmall?.copyWith(
-                        color: c.status == CardStatus.unreviewed
-                            ? scheme.onErrorContainer
-                            : scheme.onTertiaryContainer),
-                  ),
-                ),
+                isOverdue(c, today)
+                    ? _Pill('期限切れ ${_md(d)}', scheme.errorContainer, scheme.onErrorContainer)
+                    : _Pill('連絡 ${_md(d)}', scheme.tertiaryContainer, scheme.onTertiaryContainer),
+              if (dups.contains(c.stem)) _Pill('重複', scheme.secondaryContainer, scheme.onSecondaryContainer),
+              if (widget.showStatus && c.status == CardStatus.unreviewed)
+                _Pill('未確認', scheme.errorContainer, scheme.onErrorContainer)
+              else if (widget.showStatus && c.status == CardStatus.reviewed)
+                _Pill('未登録', scheme.tertiaryContainer, scheme.onTertiaryContainer),
             ],
           ),
           onTap: () => _selecting ? _toggle(c) : widget.onTap(c),
@@ -456,4 +421,21 @@ class _ListScreenState extends State<ListScreen> {
       ],
     );
   }
+}
+
+String _md(DateTime d) => '${d.month.toString().padLeft(2, '0')}/${d.day.toString().padLeft(2, '0')}';
+
+/// The small rounded label under a row's date (status, duplicate, due date).
+class _Pill extends StatelessWidget {
+  final String label;
+  final Color background, foreground;
+  const _Pill(this.label, this.background, this.foreground);
+
+  @override
+  Widget build(BuildContext context) => Container(
+        margin: const EdgeInsets.only(top: 2),
+        padding: const EdgeInsets.symmetric(horizontal: AppSpace.unit, vertical: 1),
+        decoration: BoxDecoration(color: background, borderRadius: BorderRadius.circular(999)),
+        child: Text(label, style: Theme.of(context).textTheme.labelSmall?.copyWith(color: foreground)),
+      );
 }

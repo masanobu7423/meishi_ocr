@@ -462,24 +462,11 @@ class ScanPageState extends State<ScanPage> {
       setState(() => _error = '電話帳に元の連絡先が見つかりません（削除された可能性）');
       return;
     }
-    final theirs = fieldsFromContact(full).toJson();
-    // The contact's department is "<division> <dept>" (toContact); take the
-    // division back off so a pull + push does not stack it.
-    final division = _ctl['division']!.text.trim();
-    if (division.isNotEmpty && (theirs['dept'] ?? '').startsWith('$division ')) {
-      theirs['dept'] = theirs['dept']!.substring(division.length + 1);
-    }
-    var n = 0;
-    for (final k in fieldOrder) {
-      final v = theirs[k];
-      final mine = _ctl[k]!.text.trim();
-      // The reading is stored in katakana; a hiragana reading is not a difference.
-      if (v == null || v.isEmpty || v == mine || (k == 'nameKana' && hiraToKata(normalize(mine)) == v)) continue;
-      _ctl[k]!.text = v;
-      n++;
-    }
+    final changes = pullChanges(
+        {for (final k in fieldOrder) k: _ctl[k]!.text.trim()}, fieldsFromContact(full).toJson());
+    changes.forEach((k, v) => _ctl[k]!.text = v);
     setState(() => _error = null);
-    _toast(n == 0 ? '電話帳と同じ内容です' : '電話帳から $n 項目を取り込みました。「保存」で確定します');
+    _toast(changes.isEmpty ? '電話帳と同じ内容です' : '電話帳から ${changes.length} 項目を取り込みました。「保存」で確定します');
   }
 
   /// Delete the stored card (JSON, note, photos) after confirmation. The
