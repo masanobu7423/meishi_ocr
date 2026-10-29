@@ -58,6 +58,37 @@ void main() {
     expect(f.nextContact, '2026-11-03');
   });
 
+  test('each typed accessor reads and writes its own key (no copy-paste slips)', () {
+    final f = CardFields()
+      ..name = 'name'
+      ..nameKana = 'nameKana'
+      ..nameRoman = 'nameRoman'
+      ..company = 'company'
+      ..dept = 'dept'
+      ..title = 'title'
+      ..phone = 'phone'
+      ..mobile = 'mobile'
+      ..fax = 'fax'
+      ..email = 'email'
+      ..url = 'url'
+      ..postal = 'postal'
+      ..address = 'address'
+      ..memo = 'memo'
+      ..corpNo = 'corpNo'
+      ..constructionLicense = 'constructionLicense'
+      ..realEstateLicense = 'realEstateLicense'
+      ..qualifications = 'qualifications'
+      ..division = 'division'
+      ..category = 'category'
+      ..related = 'related'
+      ..job = 'job'
+      ..trust = 'trust'
+      ..contactId = 'contactId'
+      ..nextContact = 'nextContact';
+    expect(f.toJson(), {for (final k in CardFields.keys) k: k});
+    expect([f.name, f.nameKana, f.nameRoman, f.company, f.dept, f.title, f.phone, f.mobile, f.fax, f.email, f.url, f.postal, f.address, f.memo, f.corpNo, f.constructionLicense, f.realEstateLicense, f.qualifications, f.division, f.category, f.related, f.job, f.trust, f.contactId, f.nextContact], CardFields.keys);
+  });
+
   test('every form field is a CardFields key with a Japanese label', () {
     for (final k in fieldOrder) {
       expect(CardFields.keys, contains(k), reason: k);

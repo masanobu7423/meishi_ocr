@@ -100,6 +100,19 @@ adb pull /sdcard/Android/data/jp.tobishoku.meishi_ocr/files/golden ./pulled
 - プライバシーポリシーは `docs/privacy.md`（公開 URL: https://masanobu7423.github.io/meishi_ocr/privacy.html 、GitHub Pages が `docs/` を配信）。`python tool/privacy_html.py` で `docs/privacy.html` を再生成。
 - `git tag v0.2.0 && git push --tags` で GitHub Actions が APK（debug 鍵）を artifact に置く（配布用ではなく動作確認用）。
 
+## 項目の足し方と共通部品（2026-10-29 のリファクタリング後）
+
+計画と根拠は `docs/refactoring-plan-2026-10-29.md`。名刺の項目は `lib/ocr/extractor.dart` の `fieldSpecs`（キー、ノートの
+frontmatter キー）が唯一の宣言で、JSON・ノート読み戻し・`set`/`toJson` はこの表をなめる。新しい項目は次の 4 か所だけ:
+1. `fieldSpecs` に 1 行、`CardFields` に getter/setter を 1 組。
+2. `lib/ocr/card_note.dart` のノート書き出しに 1 行（出力順を決める場所なので手書き）。
+3. 利用者が編集する項目なら `lib/ocr/fields.dart` の `fieldLabels` / `fieldOrder`（CSV の列にもなる）。
+4. 一覧・検索で使うなら `CardSummary`（`lib/ocr/history.dart`）。
+`test/field_registry_test.dart` が「全項目が JSON とノートを往復しても残る」「画面の項目はすべてラベルを持つ」を確かめるので、
+1〜3 の書き漏らしは CI で止まる。共通部品は、名刺ノートの選別 `cardNotes`（`vault_index.dart`）、日付 `ymd` / `parseYmd`
+（`dates.dart`）、連絡先権限 `requestContactsAccess` / `noContactsPermission`（`sync.dart`）、電話帳の取り直し `pullChanges`
+（`contact_mapper.dart`）、一覧のバッジ `_Pill`（`card_list.dart`）。`test/structure_guard_test.dart` がこれらの複製の再発を止める。
+
 ## 画面構成（`lib/app_shell.dart`）
 
 下部タブ 4 つ。ホーム / スキャン / 検索 / 一覧。データは vault のノートから読み、スキャンで保存すると他タブが更新される。

@@ -41,7 +41,6 @@ const fieldSpecs = <(String, String)>[
 /// keyed by [keys]; the typed accessors are views onto it.
 class CardFields {
   static final keys = List<String>.unmodifiable([for (final (k, _) in fieldSpecs) k]);
-  static final _known = keys.toSet();
 
   final _v = <String, String?>{};
 
@@ -106,7 +105,7 @@ class CardFields {
 
   /// Writes one field by key; unknown keys are ignored.
   void set(String key, String? v) {
-    if (_known.contains(key)) _v[key] = v;
+    if (keys.contains(key)) _v[key] = v;
   }
 
   Map<String, String?> toJson() => {for (final k in keys) k: _v[k]};
