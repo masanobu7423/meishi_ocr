@@ -426,29 +426,10 @@ class StoredCard {
 }
 
 /// `CardFields.toJson()` keys back onto a CardFields.
-CardFields fieldsFromJson(Map<String, String?> j) => CardFields()
-  ..name = j['name']
-  ..nameKana = j['nameKana']
-  ..nameRoman = j['nameRoman']
-  ..company = j['company']
-  ..dept = j['dept']
-  ..title = j['title']
-  ..phone = j['phone']
-  ..mobile = j['mobile']
-  ..fax = j['fax']
-  ..email = j['email']
-  ..url = j['url']
-  ..postal = j['postal']
-  ..address = j['address']
-  ..memo = j['memo']
-  ..corpNo = j['corpNo']
-  ..constructionLicense = j['constructionLicense']
-  ..realEstateLicense = j['realEstateLicense']
-  ..qualifications = j['qualifications']
-  ..division = j['division']
-  ..category = j['category']
-  ..related = j['related']
-  ..job = j['job']
-  ..trust = j['trust']
-  ..contactId = j['contactId']
-  ..nextContact = j['nextContact'];
+CardFields fieldsFromJson(Map<String, String?> j) {
+  final f = CardFields();
+  for (final k in CardFields.keys) {
+    f.set(k, j[k]);
+  }
+  return f;
+}

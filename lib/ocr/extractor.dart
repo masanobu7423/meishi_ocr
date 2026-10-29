@@ -2,91 +2,114 @@ import 'learned.dart';
 import 'ocr_line.dart';
 import 'romaji.dart';
 
-/// Structured fields pulled out of a business card.
+/// Every card field, in storage order: its key (golden JSON, form, code)
+/// and its note frontmatter key. The one place a field is declared:
+/// [CardFields.set] / [CardFields.toJson], `fieldsFromJson` and
+/// `fieldsFromFrontmatter` all walk this table, and
+/// test/field_registry_test.dart fails when a storage path drops a field.
+/// Adding a field: one row here, one accessor pair below, then the note
+/// writer (card_note.dart) and, if the user edits it, fieldLabels/fieldOrder.
+const fieldSpecs = <(String, String)>[
+  ('name', 'name'),
+  ('nameKana', 'kana'),
+  ('nameRoman', 'roman'),
+  ('company', 'company'),
+  ('dept', 'dept'),
+  ('title', 'title'),
+  ('phone', 'phone'),
+  ('mobile', 'mobile'),
+  ('fax', 'fax'),
+  ('email', 'email'),
+  ('url', 'url'),
+  ('postal', 'postal'),
+  ('address', 'address'),
+  ('memo', 'memo'),
+  ('corpNo', 'corp_no'),
+  ('constructionLicense', 'construction_license'),
+  ('realEstateLicense', 'real_estate_license'),
+  ('qualifications', 'qualifications'),
+  ('division', 'division'),
+  ('category', 'category'),
+  ('related', 'related'),
+  ('job', 'job'),
+  ('trust', 'trust'),
+  ('contactId', 'contact_id'),
+  ('nextContact', 'next_contact'),
+];
+
+/// Structured fields pulled out of a business card. Values live in one map
+/// keyed by [keys]; the typed accessors are views onto it.
 class CardFields {
-  String? name, nameKana, nameRoman, company, dept, title;
-  String? phone, mobile, fax, email, url, postal, address;
+  static final keys = List<String>.unmodifiable([for (final (k, _) in fieldSpecs) k]);
+  static final _known = keys.toSet();
 
+  final _v = <String, String?>{};
+
+  String? get name => _v['name'];
+  set name(String? v) => _v['name'] = v;
+  String? get nameKana => _v['nameKana'];
+  set nameKana(String? v) => _v['nameKana'] = v;
+  String? get nameRoman => _v['nameRoman'];
+  set nameRoman(String? v) => _v['nameRoman'] = v;
+  String? get company => _v['company'];
+  set company(String? v) => _v['company'] = v;
+  String? get dept => _v['dept'];
+  set dept(String? v) => _v['dept'] = v;
+  String? get title => _v['title'];
+  set title(String? v) => _v['title'] = v;
+  String? get phone => _v['phone'];
+  set phone(String? v) => _v['phone'] = v;
+  String? get mobile => _v['mobile'];
+  set mobile(String? v) => _v['mobile'] = v;
+  String? get fax => _v['fax'];
+  set fax(String? v) => _v['fax'] = v;
+  String? get email => _v['email'];
+  set email(String? v) => _v['email'] = v;
+  String? get url => _v['url'];
+  set url(String? v) => _v['url'] = v;
+  String? get postal => _v['postal'];
+  set postal(String? v) => _v['postal'] = v;
+  String? get address => _v['address'];
+  set address(String? v) => _v['address'] = v;
   /// Free text the user adds (where / when they met); never extracted.
-  String? memo;
-
+  String? get memo => _v['memo'];
+  set memo(String? v) => _v['memo'] = v;
   /// Construction / real-estate trade fields: licence numbers, the 13-digit
   /// corporate number and qualifications are printed and extracted; the
   /// division (部門), label (区分) and related users are the user's own.
-  String? corpNo, constructionLicense, realEstateLicense, qualifications;
-  String? division, category, related;
+  String? get corpNo => _v['corpNo'];
+  set corpNo(String? v) => _v['corpNo'] = v;
+  String? get constructionLicense => _v['constructionLicense'];
+  set constructionLicense(String? v) => _v['constructionLicense'] = v;
+  String? get realEstateLicense => _v['realEstateLicense'];
+  set realEstateLicense(String? v) => _v['realEstateLicense'] = v;
+  String? get qualifications => _v['qualifications'];
+  set qualifications(String? v) => _v['qualifications'] = v;
+  String? get division => _v['division'];
+  set division(String? v) => _v['division'] = v;
+  String? get category => _v['category'];
+  set category(String? v) => _v['category'] = v;
+  String? get related => _v['related'];
+  set related(String? v) => _v['related'] = v;
   /// 職種 (pre-filled from dept/title, the user's to change) and 信頼度 1–5.
-  String? job, trust;
+  String? get job => _v['job'];
+  set job(String? v) => _v['job'] = v;
+  String? get trust => _v['trust'];
+  set trust(String? v) => _v['trust'] = v;
   /// The address-book contact this card is linked to (set when registered
   /// or imported); pushes edits back and stops a second import.
-  String? contactId;
+  String? get contactId => _v['contactId'];
+  set contactId(String? v) => _v['contactId'] = v;
   /// 次回連絡日 (yyyy-mm-dd): the follow-up reminder; empty = none.
-  String? nextContact;
+  String? get nextContact => _v['nextContact'];
+  set nextContact(String? v) => _v['nextContact'] = v;
 
-  static const keys = [
-    'name', 'nameKana', 'nameRoman', 'company', 'dept', 'title',
-    'phone', 'mobile', 'fax', 'email', 'url', 'postal', 'address', 'memo',
-    'corpNo', 'constructionLicense', 'realEstateLicense', 'qualifications',
-    'division', 'category', 'related', 'job', 'trust', 'contactId', 'nextContact',
-  ];
-
+  /// Writes one field by key; unknown keys are ignored.
   void set(String key, String? v) {
-    switch (key) {
-      case 'name': name = v;
-      case 'nameKana': nameKana = v;
-      case 'nameRoman': nameRoman = v;
-      case 'company': company = v;
-      case 'dept': dept = v;
-      case 'title': title = v;
-      case 'phone': phone = v;
-      case 'mobile': mobile = v;
-      case 'fax': fax = v;
-      case 'email': email = v;
-      case 'url': url = v;
-      case 'postal': postal = v;
-      case 'address': address = v;
-      case 'memo': memo = v;
-      case 'corpNo': corpNo = v;
-      case 'constructionLicense': constructionLicense = v;
-      case 'realEstateLicense': realEstateLicense = v;
-      case 'qualifications': qualifications = v;
-      case 'division': division = v;
-      case 'category': category = v;
-      case 'related': related = v;
-      case 'job': job = v;
-      case 'trust': trust = v;
-      case 'contactId': contactId = v;
-      case 'nextContact': nextContact = v;
-    }
+    if (_known.contains(key)) _v[key] = v;
   }
 
-  Map<String, String?> toJson() => {
-        'name': name,
-        'nameKana': nameKana,
-        'nameRoman': nameRoman,
-        'company': company,
-        'dept': dept,
-        'title': title,
-        'phone': phone,
-        'mobile': mobile,
-        'fax': fax,
-        'email': email,
-        'url': url,
-        'postal': postal,
-        'address': address,
-        'memo': memo,
-        'corpNo': corpNo,
-        'constructionLicense': constructionLicense,
-        'realEstateLicense': realEstateLicense,
-        'qualifications': qualifications,
-        'division': division,
-        'category': category,
-        'related': related,
-        'job': job,
-        'trust': trust,
-        'contactId': contactId,
-        'nextContact': nextContact,
-      };
+  Map<String, String?> toJson() => {for (final k in keys) k: _v[k]};
 }
 
 /// Full-width ASCII -> half-width, ideographic space -> space, collapse runs,
