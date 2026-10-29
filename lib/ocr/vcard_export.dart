@@ -17,12 +17,10 @@ CardFields fieldsFromFrontmatter(Map<String, String> fm) {
 /// can be imported into Google Contacts / iCloud / another phone at once.
 String vcardOfNotes(Map<String, String> notes) {
   final contacts = <Contact>[];
-  for (final e in notes.entries) {
-    final fm = parseFrontmatter(e.value);
-    if (fm['type'] != 'meishi') continue;
+  for (final (key, fm) in cardNotes(notes)) {
     contacts.add(toContact(fieldsFromFrontmatter(fm),
         scannedAt: DateTime.tryParse(fm['scanned'] ?? '') ?? DateTime.now(),
-        source: e.key));
+        source: key));
   }
   return contacts.isEmpty ? '' : FlutterContacts.vCard.exportAll(contacts);
 }

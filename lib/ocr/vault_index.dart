@@ -15,13 +15,18 @@ Map<String, String> parseFrontmatter(String md) {
   return fm;
 }
 
+/// The card notes only (`type: meishi`), as (note stem, frontmatter), in
+/// map order: every reader of the vault goes through here.
+Iterable<(String, Map<String, String>)> cardNotes(Map<String, String> notes) sync* {
+  for (final e in notes.entries) {
+    final fm = parseFrontmatter(e.value);
+    if (fm['type'] == 'meishi') yield (e.key, fm);
+  }
+}
+
 /// [notes] maps note stem (filename without .md) -> markdown, in display order.
 String buildIndex(Map<String, String> notes) {
-  final cards = [
-    for (final e in notes.entries)
-      if (parseFrontmatter(e.value)['type'] == 'meishi')
-        (stem: e.key, fm: parseFrontmatter(e.value)),
-  ];
+  final cards = [for (final (stem, fm) in cardNotes(notes)) (stem: stem, fm: fm)];
   String link(({String stem, Map<String, String> fm}) c) =>
       '[[${c.stem}|${c.fm['name'] ?? c.stem}]]';
   String opt(String? v) => v == null || v.isEmpty ? '—' : v;

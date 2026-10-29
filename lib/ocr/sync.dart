@@ -9,6 +9,14 @@ import 'history.dart';
 /// decides which account to write to and which saved cards still need
 /// writing.
 
+/// The one message for a missing contacts permission (banner or toast).
+const noContactsPermission = '連絡先の権限がありません。端末の設定でこのアプリに連絡先を許可してください';
+
+/// Asks for read/write contacts access (the system dialog the first time);
+/// true when granted.
+Future<bool> requestContactsAccess() async =>
+    await FlutterContacts.permissions.request(PermissionType.readWrite) == PermissionStatus.granted;
+
 bool isGoogle(Account a) => a.type == 'com.google';
 
 /// Stable identity for persisting the choice. The plugin's `id` is not

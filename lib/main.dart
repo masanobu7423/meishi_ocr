@@ -28,6 +28,7 @@ import 'ocr/card_note.dart' show defaultJob;
 import 'ocr/ics_export.dart' show eventDescription, eventTitle;
 import 'ocr/jobs.dart';
 import 'ocr/review_queue.dart';
+import 'ocr/sync.dart' show noContactsPermission, requestContactsAccess;
 import 'ocr/vcard_export.dart' show vcardOfFields;
 import 'share.dart';
 import 'theme.dart';
@@ -445,9 +446,8 @@ class ScanPageState extends State<ScanPage> {
   Future<void> _pullFromContact() async {
     final id = _ctl['contactId']!.text.trim();
     if (id.isEmpty) return;
-    final perm = await FlutterContacts.permissions.request(PermissionType.readWrite);
-    if (perm != PermissionStatus.granted) {
-      setState(() => _error = '連絡先の権限がありません。端末の設定でこのアプリに連絡先を許可してください');
+    if (!await requestContactsAccess()) {
+      setState(() => _error = noContactsPermission);
       return;
     }
     final Contact? full;
@@ -573,9 +573,8 @@ class ScanPageState extends State<ScanPage> {
       setState(() => _error = '氏名が空です。読み取った文字をタップするか入力してください');
       return;
     }
-    final perm = await FlutterContacts.permissions.request(PermissionType.readWrite);
-    if (perm != PermissionStatus.granted) {
-      setState(() => _error = '連絡先の権限がありません。端末の設定でこのアプリに連絡先を許可してください');
+    if (!await requestContactsAccess()) {
+      setState(() => _error = noContactsPermission);
       return;
     }
     final existing = await FlutterContacts.getAll(

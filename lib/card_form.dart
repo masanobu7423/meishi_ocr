@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'ocr/address.dart';
 import 'ocr/extractor.dart';
 import 'ocr/fields.dart';
-import 'ocr/history.dart' show parseYmd, ymd;
+import 'ocr/dates.dart';
 import 'ocr/jobs.dart';
 import 'ocr/ocr_line.dart';
 import 'ocr/vault_index.dart' show splitNames;

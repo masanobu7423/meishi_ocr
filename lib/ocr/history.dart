@@ -1,7 +1,10 @@
 import 'card_status.dart';
+import 'dates.dart';
 import 'contact_mapper.dart' show phoneDigits;
 import 'extractor.dart';
 import 'vault_index.dart';
+
+export 'dates.dart';
 
 /// One saved card as the history list shows it. Built from the note's
 /// frontmatter only, so the vault stays the single source of truth.
@@ -57,13 +60,11 @@ class CardSummary {
 /// Newest first; non-card notes (index, etc.) are skipped.
 List<CardSummary> cardSummaries(Map<String, String> notes) {
   final out = <CardSummary>[];
-  for (final e in notes.entries) {
-    final fm = parseFrontmatter(e.value);
-    if (fm['type'] != 'meishi') continue;
+  for (final (key, fm) in cardNotes(notes)) {
     out.add(CardSummary(
-      noteStem: e.key,
-      stem: (fm['source'] ?? e.key).replaceAll(RegExp(r'\.json$'), ''),
-      name: fm['name'] ?? e.key,
+      noteStem: key,
+      stem: (fm['source'] ?? key).replaceAll(RegExp(r'\.json$'), ''),
+      name: fm['name'] ?? key,
       company: fm['company'],
       title: fm['title'],
       memo: fm['memo'],
@@ -99,17 +100,6 @@ List<CardSummary> searchCards(List<CardSummary> cards, {String query = '', Strin
           c,
     ];
 
-/// `yyyy-mm-dd` → date; anything else (empty, slashes, junk) → null.
-DateTime? parseYmd(String? s) {
-  final t = s?.trim() ?? '';
-  if (!RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(t)) return null;
-  final d = DateTime.tryParse(t);
-  // DateTime normalises 2026-02-30 to March 2: only a real date counts.
-  return d != null && ymd(d) == t ? d : null;
-}
-
-/// `yyyy-mm-dd` of a date (the note / JSON form).
-String ymd(DateTime d) => '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 
 /// Cards whose 次回連絡日 is overdue or within [days] of [today], soonest first.
 List<CardSummary> dueCards(List<CardSummary> cards, {required DateTime today, int days = 7}) {
@@ -163,9 +153,7 @@ Map<String, List<String>> suggestionsFrom(Map<String, String> notes) {
   const single = ['category', 'division', 'job'];
   const multi = ['related', 'qualifications'];
   final counts = {for (final k in [...single, ...multi]) k: <String, int>{}};
-  for (final md in notes.values) {
-    final fm = parseFrontmatter(md);
-    if (fm['type'] != 'meishi') continue;
+  for (final (_, fm) in cardNotes(notes)) {
     for (final k in single) {
       final v = fm[k]?.trim();
       if (v != null && v.isNotEmpty) counts[k]!.update(v, (n) => n + 1, ifAbsent: () => 1);

@@ -1,5 +1,6 @@
 import 'address.dart';
 import 'card_status.dart';
+import 'dates.dart';
 import 'extractor.dart';
 import 'vault_index.dart' show splitNames;
 
@@ -43,9 +44,6 @@ String? jobCategory(String? dept, String? title) {
 /// The job to show: the user's own, else the dept/title heuristic.
 String? defaultJob(CardFields f) => f.job ?? jobCategory(f.dept, f.title);
 
-String _ymd(DateTime t) =>
-    '${t.year}-${t.month.toString().padLeft(2, '0')}-${t.day.toString().padLeft(2, '0')}';
-
 /// A name as a file stem (FastaLife's sanitizer set); `名無し` when empty.
 String safeFileStem(String? name) {
   final s = (name ?? '').replaceAll(RegExp(r'[\\/:*?"<>|\s]'), '_');
@@ -53,7 +51,7 @@ String safeFileStem(String? name) {
 }
 
 /// Safe vault filename: `<name>_<yyyy-mm-dd>.md`.
-String cardNoteFilename(CardFields f, DateTime scannedAt) => '${safeFileStem(f.name)}_${_ymd(scannedAt)}.md';
+String cardNoteFilename(CardFields f, DateTime scannedAt) => '${safeFileStem(f.name)}_${ymd(scannedAt)}.md';
 
 /// [images] maps 'front' / 'back' to paths relative to the vault root
 /// (e.g. `images/c1_front.jpg`); they become Obsidian embeds.
@@ -88,7 +86,7 @@ String cardNoteMarkdown(CardFields f,
     if (city != null) '市区_${tagify(city)}',
     if (areaCode != null) '市外局番_$areaCode',
     if (domain != null) 'ドメイン_${tagify(domain)}',
-    '取込_${_ymd(scannedAt).substring(0, 7)}',
+    '取込_${ymd(scannedAt).substring(0, 7)}',
     if (vertical) '縦書き',
   ];
 
@@ -127,7 +125,7 @@ String cardNoteMarkdown(CardFields f,
     ..write(fm('trust', f.trust))
     ..write(fm('contact_id', f.contactId))
     ..write(fm('next_contact', f.nextContact))
-    ..write('scanned: ${_ymd(scannedAt)}\n')
+    ..write('scanned: ${ymd(scannedAt)}\n')
     ..write('vertical: $vertical\n')
     ..write('status: ${status.label}\n')
     ..write(fm('source', source))

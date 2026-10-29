@@ -1,14 +1,12 @@
 import 'package:flutter_contacts/flutter_contacts.dart';
 
+import 'dates.dart';
 import 'extractor.dart';
 import 'romaji.dart';
 
 /// ひらがな -> カタカナ (contacts' phonetic fields are katakana by convention).
 String hiraToKata(String s) => s.replaceAllMapped(RegExp(r'[ぁ-ゖ]'),
     (m) => String.fromCharCode(m[0]!.codeUnitAt(0) + 0x60));
-
-String _ymd(DateTime t) =>
-    '${t.year}-${t.month.toString().padLeft(2, '0')}-${t.day.toString().padLeft(2, '0')}';
 
 /// Card fields -> a contact ready for `FlutterContacts.create`.
 /// Japanese cards print family name first; the reading comes from printed
@@ -64,7 +62,7 @@ Contact toContact(CardFields f, {required DateTime scannedAt, String? source}) {
         if (f.constructionLicense != null) '建設業許可: ${f.constructionLicense}',
         if (f.realEstateLicense != null) '宅建業免許: ${f.realEstateLicense}',
         if (f.qualifications != null) '資格: ${f.qualifications}',
-        '名刺取込 ${_ymd(scannedAt)}${source == null ? '' : ' ($source)'}',
+        '名刺取込 ${ymd(scannedAt)}${source == null ? '' : ' ($source)'}',
       ].join('\n')),
     ],
   );

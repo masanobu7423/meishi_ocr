@@ -12,16 +12,14 @@ String csvOfNotes(Map<String, String> notes) => csvAndRows(notes).$1;
 /// (csv, number of card rows).
 (String, int) csvAndRows(Map<String, String> notes) {
   final rows = <(String, List<String>)>[];
-  for (final e in notes.entries) {
-    final fm = parseFrontmatter(e.value);
-    if (fm['type'] != 'meishi') continue;
+  for (final (key, fm) in cardNotes(notes)) {
     final j = fieldsFromFrontmatter(fm).toJson();
     final scanned = fm['scanned'] ?? '';
     rows.add((scanned, [
       for (final k in fieldOrder) j[k] ?? '',
       parseStatus(fm['status']).label,
       scanned,
-      e.key,
+      key,
     ]));
   }
   rows.sort((a, b) => b.$1.compareTo(a.$1));

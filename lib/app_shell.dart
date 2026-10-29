@@ -204,9 +204,8 @@ class _HomeShellState extends State<HomeShell> {
           : '${_account!.name}（${isGoogle(_account!) ? "Google" : _account!.type}）';
 
   Future<void> _chooseAccount() async {
-    final perm = await FlutterContacts.permissions.request(PermissionType.readWrite);
-    if (perm != PermissionStatus.granted) {
-      _toast('連絡先の権限がありません。端末の設定でこのアプリに連絡先を許可してください');
+    if (!await requestContactsAccess()) {
+      _toast(noContactsPermission);
       return;
     }
     final accounts = sortedAccounts(await FlutterContacts.accounts.getAll());
@@ -247,18 +246,16 @@ class _HomeShellState extends State<HomeShell> {
   /// in the chosen account; already-present ones (phone / email match) and
   /// nameless ones are skipped and counted.
   Future<void> _syncAll() async {
-    final perm = await FlutterContacts.permissions.request(PermissionType.readWrite);
-    if (perm != PermissionStatus.granted) {
-      _toast('連絡先の権限がありません。端末の設定でこのアプリに連絡先を許可してください');
+    if (!await requestContactsAccess()) {
+      _toast(noContactsPermission);
       return;
     }
     final account = await _resolveAccount();
     final (store, _) = await _ready;
     // Only cards someone has looked at: a burst capture is still a guess.
     final stems = <CardFields, String>{};
-    for (final md in (await store.notes()).values) {
-      final fm = parseFrontmatter(md);
-      if (fm['type'] != 'meishi' || parseStatus(fm['status']) == CardStatus.unreviewed) continue;
+    for (final (_, fm) in cardNotes(await store.notes())) {
+      if (parseStatus(fm['status']) == CardStatus.unreviewed) continue;
       stems[fieldsFromFrontmatter(fm)] = (fm['source'] ?? '').replaceAll(RegExp(r'\.json$'), '');
     }
     final cards = stems.keys.toList();
@@ -295,9 +292,8 @@ class _HomeShellState extends State<HomeShell> {
   /// device) become cards, so the app holds the whole address book and can
   /// group it by 職種 / 信頼度. Linked and matching contacts are skipped.
   Future<void> _importContacts() async {
-    final perm = await FlutterContacts.permissions.request(PermissionType.readWrite);
-    if (perm != PermissionStatus.granted) {
-      _toast('連絡先の権限がありません。端末の設定でこのアプリに連絡先を許可してください');
+    if (!await requestContactsAccess()) {
+      _toast(noContactsPermission);
       return;
     }
     final account = await _resolveAccount();
