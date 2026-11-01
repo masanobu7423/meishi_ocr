@@ -106,24 +106,37 @@ class _HomeShellState extends State<HomeShell> {
     }
   }
 
-  /// 連絡済み: clear the 次回連絡日 of the selected cards. The phone book's
-  /// note follows the next time the card is saved, as for any other edit.
+  /// 連絡済み: today becomes the 最終連絡日 of the selected cards, and a sheet
+  /// asks for the next 次回連絡日 (none / 1 week … 3 months). The phone
+  /// book's note follows the next time the card is saved, as for any edit.
   Future<void> _followedUp(List<CardSummary> cards) async {
+    final today = DateTime.now();
+    String on(FollowUp f) => ymd(followUpDate(today, f));
+    final picked = await showChoiceSheet<String>(context, '次の連絡予定', [
+      const Choice('none', Icons.event_busy_outlined, '次の予定なし', '次回連絡日を消します'),
+      Choice(FollowUp.week.name, Icons.event_outlined, '1 週間後', on(FollowUp.week)),
+      Choice(FollowUp.twoWeeks.name, Icons.event_outlined, '2 週間後', on(FollowUp.twoWeeks)),
+      Choice(FollowUp.month.name, Icons.event_outlined, '1 か月後', on(FollowUp.month)),
+      Choice(FollowUp.threeMonths.name, Icons.event_outlined, '3 か月後', on(FollowUp.threeMonths)),
+    ]);
+    if (picked == null) return; // dismissed: nothing recorded
+    final next = FollowUp.values.where((f) => f.name == picked).map(on).firstOrNull;
     final (store, _) = await _ready;
     var n = 0;
     for (final c in cards) {
       try {
-        if (await store.setNextContact(c.stem, null)) n++;
+        if (await store.setFollowUp(c.stem, last: ymd(today), next: next)) n++;
       } catch (e) {
-        await store.appendError('setNextContact ${c.stem}', e);
+        await store.appendError('setFollowUp ${c.stem}', e);
       }
     }
-    _reload();
     if (!mounted) return;
+    _reload();
+    _scanKey.currentState?.refreshFollowUp({for (final c in cards) c.stem}, last: ymd(today), next: next);
     final count = n == cards.length ? '$n 件' : '${cards.length} 件中 $n 件';
     // The contact's note keeps its 次回連絡 line until the card is saved again.
     final linked = cards.any((c) => c.status == CardStatus.registered);
-    _toast('$countを連絡済みにしました${linked ? "。電話帳のメモは、その名刺を次に保存したときに更新されます" : ""}');
+    _toast('$countを連絡済みにしました${next == null ? "" : "（次回 $next）"}${linked ? "。電話帳のメモは、その名刺を次に保存したときに更新されます" : ""}');
   }
 
   /// The menu: four rarely used groups. Exports and backups open a sheet
@@ -549,6 +562,8 @@ class _HomeShellState extends State<HomeShell> {
                 onOpenCard: _open,
                 onDelete: _deleteCards,
                 onShare: _shareCards,
+                onCall: _call,
+                onFollowedUp: _followedUp,
                 onSeeAll: () => _go(3),
                 onContinue: (f) {
                   setState(() => _listFilter = f);
@@ -569,7 +584,8 @@ class _HomeShellState extends State<HomeShell> {
                   onTap: _open,
                   onCall: _call,
                   onDelete: _deleteCards,
-                  onShare: _shareCards),
+                  onShare: _shareCards,
+                  onFollowedUp: _followedUp),
               ListScreen(
                 cards: cards,
                 vault: store.vaultDir,

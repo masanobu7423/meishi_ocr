@@ -337,6 +337,14 @@ class ScanPageState extends State<ScanPage> {
   /// saved values (not a fresh extraction) and images.
   Future<void> loadStoredCard(CardSummary picked) => _showStoredCard(picked.stem, name: picked.name);
 
+  /// 連絡済み elsewhere on the open card: show the new dates, so a later 保存
+  /// from this form does not write the old ones back. Other edits stay.
+  void refreshFollowUp(Set<String> stems, {required String last, required String? next}) {
+    if (!mounted || !stems.contains(_source?.replaceAll('.json', ''))) return;
+    _ctl['lastContact']!.text = last;
+    _ctl['nextContact']!.text = next ?? '';
+  }
+
   /// Cards deleted elsewhere: drop them from the queue and clear the screen
   /// if one of them is open, so a later 保存 cannot recreate it.
   void forget(Set<String> stems) {

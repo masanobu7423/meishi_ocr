@@ -131,9 +131,10 @@ class CardStore {
   Future<bool> setStatus(String stem, CardStatus status, {String? contactId}) =>
       _resave(stem, (c) => (status, {...c.expected, 'contactId': ?contactId}));
 
-  /// Sets or clears (null) only the 次回連絡日 (連絡済み in the list).
-  Future<bool> setNextContact(String stem, String? ymd) =>
-      _resave(stem, (c) => (c.status, {...c.expected, 'nextContact': ymd}));
+  /// 連絡済み: records 最終連絡日 [last] and sets (or clears, null) the next
+  /// 次回連絡日; nothing else changes.
+  Future<bool> setFollowUp(String stem, {required String last, required String? next}) =>
+      _resave(stem, (c) => (c.status, {...c.expected, 'lastContact': last, 'nextContact': next}));
 
   /// Re-saves a stored card with a new status / fields; lines, images and
   /// the first scan date stay. False when the card is missing.

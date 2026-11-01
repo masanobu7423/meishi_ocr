@@ -187,8 +187,8 @@ class _CardFormState extends State<CardForm> {
         dropdownMenuEntries: [for (final e in entries) DropdownMenuEntry(value: e, label: e)],
       );
 
-  /// 次回連絡日: read-only field, the platform date picker fills it,
-  /// the suffix clears it. Stored as yyyy-mm-dd so Obsidian can sort on it.
+  /// 次回連絡日 / 最終連絡日: read-only field, the platform date picker fills
+  /// it, the suffix clears it. Stored as yyyy-mm-dd so Obsidian can sort on it.
   Widget _date(String k, TextTheme text, ColorScheme scheme) {
     final c = widget.controllers[k]!;
     final today = widget.today ?? DateTime.now();
@@ -199,8 +199,9 @@ class _CardFormState extends State<CardForm> {
       builder: (context, v, _) => Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _dateField(c, today, text, scheme),
-          if (widget.onCalendar != null && parseYmd(v.text) != null)
+          _dateField(k, c, today, text, scheme),
+          // Only the planned follow-up goes to the calendar.
+          if (k == 'nextContact' && widget.onCalendar != null && parseYmd(v.text) != null)
             TextButton.icon(
               onPressed: () => widget.onCalendar!(v.text.trim()),
               icon: const Icon(Icons.event_available_outlined, size: AppSize.iconSmall),
@@ -211,15 +212,17 @@ class _CardFormState extends State<CardForm> {
     );
   }
 
-  Widget _dateField(TextEditingController c, DateTime today, TextTheme text, ColorScheme scheme) {
+  Widget _dateField(String k, TextEditingController c, DateTime today, TextTheme text, ColorScheme scheme) {
     return TextField(
       controller: c,
       readOnly: true,
       decoration: InputDecoration(
-        labelText: fieldLabels['nextContact'],
-        helperText: '次に連絡する日。ホームと一覧の「連絡予定」に出ます（空欄でも保存できます）',
+        labelText: fieldLabels[k],
+        helperText: k == 'nextContact'
+            ? '次に連絡する日。ホームと一覧の「連絡予定」に出ます（空欄でも保存できます）'
+            : '最後に連絡した日。一覧の「連絡済み」で今日の日付が入ります',
         helperStyle: text.labelSmall?.copyWith(color: scheme.onSurfaceVariant),
-        prefixIcon: const Icon(Icons.event_outlined),
+        prefixIcon: Icon(k == 'nextContact' ? Icons.event_outlined : Icons.history),
         suffixIcon: c.text.isEmpty
             ? null
             : IconButton(
@@ -302,7 +305,7 @@ class _CardFormState extends State<CardForm> {
               'category' => _dropdown(fieldLabels[k]!, widget.controllers[k]!, categories, typeable: true),
               'job' => _dropdown(fieldLabels[k]!, widget.controllers[k]!, jobs, typeable: true),
               'trust' => _trust(text, scheme),
-              'nextContact' => _date(k, text, scheme),
+              'nextContact' || 'lastContact' => _date(k, text, scheme),
               'address' => Column(children: [_text(k, text, scheme), _addressParts()]),
               _ => Column(
                   crossAxisAlignment: CrossAxisAlignment.start,

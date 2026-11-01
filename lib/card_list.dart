@@ -64,7 +64,7 @@ class CardList extends StatefulWidget {
   final ValueChanged<CardSummary>? onCall;
   /// Company order with a 「会社（N 人）」 header above each company.
   final bool groupByCompany;
-  /// 連絡済み in the selection bar: the selected cards that have a 次回連絡日.
+  /// 連絡済み in the selection bar: records the contact for the selected cards.
   final Future<void> Function(List<CardSummary> cards)? onFollowedUp;
   const CardList({
     super.key,
@@ -133,12 +133,12 @@ class _CardListState extends State<CardList> {
                 icon: const Icon(Icons.edit_outlined, size: AppSize.iconSmall),
                 label: const Text('修正'),
               ),
-            if (widget.onFollowedUp != null && _chosen.any((c) => c.nextContact != null))
+            if (widget.onFollowedUp != null)
               TextButton.icon(
                 onPressed: () {
-                  final dated = _chosen.where((c) => c.nextContact != null).toList();
+                  final chosen = _chosen;
                   setState(_selected.clear);
-                  widget.onFollowedUp!(dated);
+                  widget.onFollowedUp!(chosen);
                 },
                 icon: const Icon(Icons.event_available_outlined, size: AppSize.iconSmall),
                 label: const Text('連絡済み'),
@@ -244,6 +244,7 @@ class _CardListState extends State<CardList> {
                 crossAxisAlignment: WrapCrossAlignment.center,
                 children: [
                   if (c.scanned != null) Text(c.scanned!, style: text.labelSmall),
+                  if (parseYmd(c.lastContact) case final d?) Text('最終連絡 ${_md(d)}', style: text.labelSmall),
                   if (parseYmd(c.nextContact) case final d?)
                     isOverdue(c, today)
                         ? _Pill('期限切れ ${_md(d)}', scheme.errorContainer, scheme.onErrorContainer)
@@ -288,7 +289,9 @@ class SearchScreen extends StatefulWidget {
   final Directory vault;
   final ValueChanged<CardSummary> onTap;
   final ValueChanged<CardSummary>? onCall;
-  final Future<void> Function(List<CardSummary>)? onDelete, onShare;
+  final Future<void> Function(List<CardSummary>)? onDelete, onShare, onFollowedUp;
+  /// For ご無沙汰 and the due badges; null = now.
+  final DateTime? today;
   const SearchScreen(
       {super.key,
       required this.cards,
@@ -296,7 +299,9 @@ class SearchScreen extends StatefulWidget {
       required this.onTap,
       this.onCall,
       this.onDelete,
-      this.onShare});
+      this.onShare,
+      this.onFollowedUp,
+      this.today});
 
   @override
   State<SearchScreen> createState() => _SearchScreenState();
@@ -306,7 +311,7 @@ class _SearchScreenState extends State<SearchScreen> {
   String _query = '';
   String? _job, _pref;
   int _minTrust = 0;
-  bool _byCompany = false;
+  bool _byCompany = false, _dormant = false;
 
   /// One scrolling line of chips (never wraps into a tall block): the
   /// values in use, tap again to clear.
@@ -333,8 +338,15 @@ class _SearchScreenState extends State<SearchScreen> {
     final prefs = prefsOf(widget.cards);
     if (_job != null && !jobs.contains(_job)) _job = null;
     if (_pref != null && !prefs.contains(_pref)) _pref = null;
+    final today = widget.today ?? DateTime.now();
     final hits = sortCards(
-        searchCards(widget.cards, query: _query, job: _job, pref: _pref, minTrust: _minTrust), CardSort.date);
+        searchCards(widget.cards,
+            query: _query,
+            job: _job,
+            pref: _pref,
+            minTrust: _minTrust,
+            dormantOn: _dormant ? today : null),
+        CardSort.date);
     // A short body (keyboard open, small phone) keeps the text box, the
     // count and the list; the chip and 信頼度 rows come back with the room.
     return LayoutBuilder(builder: (context, box) {
@@ -385,12 +397,28 @@ class _SearchScreenState extends State<SearchScreen> {
           padding: const EdgeInsets.fromLTRB(AppSpace.gutter, AppSpace.unit, AppSpace.gutter, 0),
           child: Row(
             children: [
-              FilterChip(
-                label: const Text('会社でまとめる'),
-                selected: _byCompany,
-                onSelected: (on) => setState(() => _byCompany = on),
+              // Wrap: two chips and the count share 328dp; at a large font the
+              // second chip drops to its own line instead of overflowing.
+              Expanded(
+                child: Wrap(
+                  spacing: AppSpace.unit,
+                  runSpacing: AppSpace.unit / 2,
+                  children: [
+                    FilterChip(
+                      label: const Text('会社でまとめる'),
+                      selected: _byCompany,
+                      onSelected: (on) => setState(() => _byCompany = on),
+                    ),
+                    FilterChip(
+                      label: const Text('ご無沙汰（90 日以上）'),
+                      tooltip: '最終連絡日（なければ取込日）から 90 日以上たった名刺',
+                      selected: _dormant,
+                      onSelected: (on) => setState(() => _dormant = on),
+                    ),
+                  ],
+                ),
               ),
-              const Spacer(),
+              const SizedBox(width: AppSpace.unit),
               Text('${hits.length} 件', style: text.labelLarge),
             ],
           ),
@@ -404,6 +432,8 @@ class _SearchScreenState extends State<SearchScreen> {
             groupByCompany: _byCompany,
             onDelete: widget.onDelete,
             onShare: widget.onShare,
+            onFollowedUp: widget.onFollowedUp,
+            today: today,
             emptyText: widget.cards.isEmpty
                 ? 'まだ名刺がありません。撮影して保存すると検索できます'
                 : '条件に合う名刺はありません',

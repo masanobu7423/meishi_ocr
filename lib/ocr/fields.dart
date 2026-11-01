@@ -13,6 +13,7 @@ const fieldLabels = <String, String>{
   'job': '職種',
   'trust': '信頼度',
   'nextContact': '次回連絡日',
+  'lastContact': '最終連絡日',
   'phone': '電話',
   'mobile': '携帯',
   'fax': 'FAX',
@@ -35,5 +36,5 @@ const fieldOrder = [
   'name', 'nameKana', 'company', 'division', 'dept', 'title', 'job',
   'phone', 'mobile', 'email', 'postal', 'address', 'fax', 'url',
   'corpNo', 'constructionLicense', 'realEstateLicense', 'qualifications',
-  'category', 'trust', 'nextContact', 'related', 'nameRoman', 'memo',
+  'category', 'trust', 'nextContact', 'lastContact', 'related', 'nameRoman', 'memo',
 ];

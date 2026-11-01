@@ -23,6 +23,9 @@ class HomeScreen extends StatelessWidget {
   final ValueChanged<StatusFilter>? onContinue;
   /// Long-press selection, deletion and sharing in the recent list.
   final Future<void> Function(List<CardSummary>)? onDelete, onShare;
+  /// The due follow-ups list: call from the row, 連絡済み from the bar.
+  final ValueChanged<CardSummary>? onCall;
+  final Future<void> Function(List<CardSummary>)? onFollowedUp;
 
   const HomeScreen({
     super.key,
@@ -39,6 +42,8 @@ class HomeScreen extends StatelessWidget {
     this.onContinue,
     this.onDelete,
     this.onShare,
+    this.onCall,
+    this.onFollowedUp,
   });
 
   @override
@@ -48,7 +53,8 @@ class HomeScreen extends StatelessWidget {
     final month = '${today.year}-${today.month.toString().padLeft(2, '0')}';
     final thisMonth = cards.where((c) => (c.scanned ?? '').startsWith(month)).length;
     final recent = sortCards(cards, CardSort.date).take(5).toList();
-    final due = dueCards(cards, today: today).length;
+    final dueList = dueCards(cards, today: today);
+    final due = dueList.length;
     final dups = duplicateStems(cards).length;
     Widget tile(String label, int n, String unit, StatusFilter f) => InkWell(
           borderRadius: BorderRadius.circular(AppRadius.large),
@@ -116,6 +122,24 @@ class HomeScreen extends StatelessWidget {
             ),
           ],
         ),
+        // Who to call this week, soonest first, callable from the row.
+        if (dueList.isNotEmpty) ...[
+          const SizedBox(height: AppSpace.gutter),
+          Text('連絡予定の相手', style: text.titleMedium),
+          CardList(
+            key: const ValueKey('home-due'),
+            cards: dueList.take(3).toList(),
+            vault: vault,
+            onTap: onOpenCard,
+            onCall: onCall,
+            onDelete: onDelete,
+            onShare: onShare,
+            onFollowedUp: onFollowedUp,
+            today: today,
+            showStatus: false,
+            shrinkWrap: true,
+          ),
+        ],
         if (accountLabel != null) ...[
           const SizedBox(height: AppSpace.unit),
           ListTile(

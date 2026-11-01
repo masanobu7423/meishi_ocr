@@ -10,10 +10,8 @@ import 'package:meishi_ocr/home_screen.dart';
 import 'package:meishi_ocr/ocr/actions.dart';
 import 'package:meishi_ocr/ocr/card_note.dart';
 import 'package:meishi_ocr/ocr/card_status.dart';
-import 'package:meishi_ocr/ocr/card_store.dart';
 import 'package:meishi_ocr/ocr/extractor.dart';
 import 'package:meishi_ocr/ocr/history.dart';
-import 'package:meishi_ocr/ocr/vault_index.dart';
 import 'package:meishi_ocr/theme.dart';
 
 const _ledger = [
@@ -103,47 +101,6 @@ void main() {
     }
     expect(t.getTopLeft(find.text('連絡予定')).dy, greaterThan(t.getTopLeft(find.text('未確認')).dy),
         reason: 'the third tile starts a second row');
-  });
-
-  testWidgets('連絡済み appears only when a selected card has a date, and hands over only dated cards', (t) async {
-    final done = <List<String>>[];
-    await t.pumpWidget(_app(CardList(
-      cards: const [
-        CardSummary(noteStem: 'x', stem: 'x', name: '期日 あり', nextContact: '2026-11-01'),
-        CardSummary(noteStem: 'y', stem: 'y', name: '期日 なし'),
-      ],
-      vault: Directory.systemTemp,
-      onTap: (_) {},
-      onDelete: (_) async {},
-      onFollowedUp: (cs) async => done.add([for (final c in cs) c.stem]),
-    )));
-    await t.longPress(find.text('期日 なし'));
-    await t.pump();
-    expect(find.text('連絡済み'), findsNothing);
-    await t.tap(find.text('すべて選択'));
-    await t.pump();
-    await t.tap(find.text('連絡済み'));
-    await t.pump();
-    expect(done, [['x']]);
-  });
-
-  test('setNextContact clears the date in JSON and note, keeping status and scan date', () async {
-    final tmp = await Directory.systemTemp.createTemp('meishi_ledger_');
-    addTearDown(() => tmp.delete(recursive: true));
-    final store = CardStore(tmp);
-    await store.saveCard(stem: 'k', front: const [], back: const [],
-        expected: (CardFields()
-              ..name = '山田 太郎'
-              ..nextContact = '2026-11-01')
-            .toJson(),
-        status: CardStatus.registered, scannedAt: DateTime(2026, 10, 1));
-    expect(await store.setNextContact('k', null), isTrue);
-    final c = await store.loadCard('k');
-    expect((c!.expected['nextContact'], c.status), (null, CardStatus.registered));
-    final fm = parseFrontmatter((await store.notes()).values.single);
-    expect(fm['next_contact'], isNull);
-    expect(fm['scanned'], '2026-10-01');
-    expect(await store.setNextContact('missing', null), isFalse);
   });
 
   testWidgets('a choice sheet lists titled options with their purpose and returns the tapped one', (t) async {

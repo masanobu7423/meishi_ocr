@@ -106,4 +106,15 @@ void main() {
       expect(extract(lines, learned: learned).name, '田中 健二');
     });
   });
+
+  test("follow-up dates are the user's own: a date printed on the card is not learned as one", () {
+    final l = Learned()
+      ..learn(
+        guess: const {},
+        corrected: const {'nextContact': '2026-11-03', 'lastContact': '2026-11-02'},
+        lines: [_l('2026-11-03'), _l('2026-11-02')],
+      );
+    expect(l.fieldFor('2026-11-03'), isNull);
+    expect(l.fieldFor('2026-11-02'), isNull);
+  });
 }

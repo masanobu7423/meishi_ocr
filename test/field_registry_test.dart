@@ -12,6 +12,7 @@ import 'package:meishi_ocr/ocr/vcard_export.dart';
 /// A distinct, format-valid value per key (dates must parse, trust is a digit).
 String _sample(String k) => switch (k) {
       'nextContact' => '2026-11-03',
+      'lastContact' => '2026-10-30',
       'trust' => '4',
       'name' => '山田 太郎',
       'address' => '東京都千代田区千代田1-1',
@@ -84,9 +85,10 @@ void main() {
       ..job = 'job'
       ..trust = 'trust'
       ..contactId = 'contactId'
-      ..nextContact = 'nextContact';
+      ..nextContact = 'nextContact'
+      ..lastContact = 'lastContact';
     expect(f.toJson(), {for (final k in CardFields.keys) k: k});
-    expect([f.name, f.nameKana, f.nameRoman, f.company, f.dept, f.title, f.phone, f.mobile, f.fax, f.email, f.url, f.postal, f.address, f.memo, f.corpNo, f.constructionLicense, f.realEstateLicense, f.qualifications, f.division, f.category, f.related, f.job, f.trust, f.contactId, f.nextContact], CardFields.keys);
+    expect([f.name, f.nameKana, f.nameRoman, f.company, f.dept, f.title, f.phone, f.mobile, f.fax, f.email, f.url, f.postal, f.address, f.memo, f.corpNo, f.constructionLicense, f.realEstateLicense, f.qualifications, f.division, f.category, f.related, f.job, f.trust, f.contactId, f.nextContact, f.lastContact], CardFields.keys);
   });
 
   test('every form field is a CardFields key with a Japanese label', () {

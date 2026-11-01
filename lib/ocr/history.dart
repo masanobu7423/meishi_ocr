@@ -21,6 +21,8 @@ class CardSummary {
   final String? contactId;
   /// 次回連絡日 (yyyy-mm-dd) when a follow-up is planned.
   final String? nextContact;
+  /// 最終連絡日 (yyyy-mm-dd): set by 連絡済み; the ledger's ご無沙汰 filter.
+  final String? lastContact;
   /// 都道府県 from the address (the note's `pref`), for the ledger filter.
   final String? pref;
   final CardStatus status;
@@ -47,6 +49,7 @@ class CardSummary {
     this.trust,
     this.contactId,
     this.nextContact,
+    this.lastContact,
     this.pref,
     this.status = CardStatus.reviewed,
   });
@@ -86,6 +89,7 @@ List<CardSummary> cardSummaries(Map<String, String> notes) {
       trust: fm['trust'],
       contactId: fm['contact_id'],
       nextContact: fm['next_contact'],
+      lastContact: fm['last_contact'],
       pref: fm['pref'],
       status: parseStatus(fm['status']),
     ));
@@ -97,12 +101,13 @@ List<CardSummary> cardSummaries(Map<String, String> notes) {
 /// Text search narrowed by 職種, 都道府県 and a minimum 信頼度 (cards without
 /// a rating never pass a minimum).
 List<CardSummary> searchCards(List<CardSummary> cards,
-        {String query = '', String? job, String? pref, int minTrust = 0}) =>
+        {String query = '', String? job, String? pref, int minTrust = 0, DateTime? dormantOn}) =>
     [
       for (final c in cards)
         if (c.matches(query) &&
             (job == null || c.job == job) &&
             (pref == null || c.pref == pref) &&
+            (dormantOn == null || isDormant(c, dormantOn)) &&
             (minTrust == 0 || (int.tryParse(c.trust ?? '') ?? 0) >= minTrust))
           c,
     ];
@@ -118,6 +123,15 @@ List<CardSummary> dueCards(List<CardSummary> cards, {required DateTime today, in
 List<CardSummary> byNextContact(List<CardSummary> cards) =>
     cards.where((c) => parseYmd(c.nextContact) != null).toList()
       ..sort((a, b) => a.nextContact!.compareTo(b.nextContact!));
+
+/// The last time we heard of this person: 最終連絡日, else the scan date.
+DateTime? _contactBase(CardSummary c) => parseYmd(c.lastContact) ?? parseYmd(c.scanned);
+
+/// ご無沙汰: no contact (or scan) for [days] days or more; undated never counts.
+bool isDormant(CardSummary c, DateTime today, {int days = 90}) {
+  final base = _contactBase(c);
+  return base != null && !base.isAfter(DateTime(today.year, today.month, today.day - days));
+}
 
 bool isOverdue(CardSummary c, DateTime today) {
   final d = parseYmd(c.nextContact);

@@ -35,6 +35,7 @@ const fieldSpecs = <(String, String)>[
   ('trust', 'trust'),
   ('contactId', 'contact_id'),
   ('nextContact', 'next_contact'),
+  ('lastContact', 'last_contact'),
 ];
 
 /// Structured fields pulled out of a business card. Values live in one map
@@ -102,6 +103,8 @@ class CardFields {
   /// 次回連絡日 (yyyy-mm-dd): the follow-up reminder; empty = none.
   String? get nextContact => _v['nextContact'];
   set nextContact(String? v) => _v['nextContact'] = v;
+  String? get lastContact => _v['lastContact'];
+  set lastContact(String? v) => _v['lastContact'] = v;
 
   /// Writes one field by key; unknown keys are ignored.
   void set(String key, String? v) {

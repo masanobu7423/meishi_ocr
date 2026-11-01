@@ -58,6 +58,7 @@ Contact toContact(CardFields f, {required DateTime scannedAt, String? source}) {
         if (f.job != null) '職種: ${f.job}',
         if (f.trust != null) '信頼度: ${f.trust}',
         if (f.nextContact != null) '次回連絡: ${f.nextContact}',
+        if (f.lastContact != null) '最終連絡: ${f.lastContact}',
         if (f.related != null) '関係者: ${f.related}',
         if (f.corpNo != null) '法人番号: ${f.corpNo}',
         if (f.constructionLicense != null) '建設業許可: ${f.constructionLicense}',
@@ -71,7 +72,7 @@ Contact toContact(CardFields f, {required DateTime scannedAt, String? source}) {
 
 /// The note lines toContact writes, by card key (the reverse of the list above).
 const _noteKeys = {
-  '区分': 'category', '職種': 'job', '信頼度': 'trust', '次回連絡': 'nextContact', '関係者': 'related', '法人番号': 'corpNo',
+  '区分': 'category', '職種': 'job', '信頼度': 'trust', '次回連絡': 'nextContact', '最終連絡': 'lastContact', '関係者': 'related', '法人番号': 'corpNo',
   '建設業許可': 'constructionLicense', '宅建業免許': 'realEstateLicense', '資格': 'qualifications',
 };
 
@@ -166,6 +167,10 @@ Map<String, String> pullChanges(Map<String, String> current, Map<String, String?
     if (k == 'dept' && division.isNotEmpty && v.startsWith('$division ')) v = v.substring(division.length + 1);
     if (v.isEmpty || v == mine) continue;
     if (k == 'nameKana' && hiraToKata(normalize(mine)) == v) continue;
+    // 連絡済み does not write to the phone book, so its dates can be stale:
+    // never pull a last contact older than ours, or a follow-up on or before it.
+    final last = parseYmd(current['lastContact']);
+    if (last != null && (k == 'lastContact' || k == 'nextContact') && parseYmd(v)?.isAfter(last) != true) continue;
     out[k] = v;
   }
   return out;
