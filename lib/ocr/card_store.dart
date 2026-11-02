@@ -131,6 +131,11 @@ class CardStore {
   Future<bool> setStatus(String stem, CardStatus status, {String? contactId}) =>
       _resave(stem, (c) => (status, {...c.expected, 'contactId': ?contactId}));
 
+  /// Rewrites a card's fields and status (まとめる, and its undo); lines,
+  /// images and the first scan date stay.
+  Future<bool> replaceFields(String stem, Map<String, String?> expected, CardStatus status) =>
+      _resave(stem, (_) => (status, expected));
+
   /// 連絡済み: records 最終連絡日 [last] and sets (or clears, null) the next
   /// 次回連絡日; nothing else changes.
   Future<bool> setFollowUp(String stem, {required String last, required String? next}) =>
@@ -178,27 +183,106 @@ class CardStore {
     return out;
   }
 
-  /// Removes a saved card: its JSON, notes and images. False if nothing
-  /// was stored under [stem].
-  Future<bool> deleteCard(String stem) async {
+  /// Moves a card (JSON, notes, photos) to `trash/<stem>/`, keeping each
+  /// file's path relative to the root, so [undelete] can put it back. The
+  /// trash is outside vault/ (Obsidian, the index) and outside backups;
+  /// [purgeTrash] empties it after 7 days.
+  Future<bool> deleteCard(String stem, {DateTime? now}) async {
     if (!_safeStem(stem)) return false;
     final json = File('${root.path}/golden/$stem.json');
     final vault = await _dir('vault').create(recursive: true);
     final olds = await _notesFor(vault, stem);
     if (!json.existsSync() && olds.isEmpty) return false;
+    final files = <File>[for (final (f, _) in olds) f];
+    String? name;
     if (json.existsSync()) {
       final j = jsonDecode(await json.readAsString()) as Map<String, dynamic>;
+      name = (j['expected'] as Map?)?['name'] as String?;
       for (final rel in (j['images'] as Map?)?.values ?? const []) {
         final img = File('${vault.path}/$rel');
-        if (_safeImage(rel) && img.existsSync()) await img.delete();
+        if (_safeImage(rel) && img.existsSync()) files.add(img);
       }
-      await json.delete();
+      files.add(json);
     }
-    for (final (f, _) in olds) {
-      await f.delete();
+    final bin = Directory('${root.path}/trash/$stem');
+    if (bin.existsSync()) await bin.delete(recursive: true);
+    for (final f in files) {
+      await _move(f, File('${bin.path}/${_rel(f)}'));
     }
+    await File('${bin.path}/$_deletedMark').writeAsString(
+        jsonEncode({'at': (now ?? DateTime.now()).toIso8601String(), 'name': name ?? stem}));
     await _writeIndex(vault);
     return true;
+  }
+
+  static const _deletedMark = '.deleted';
+
+  String _rel(File f) => f.path.substring(root.path.length + 1).replaceAll(r'\', '/');
+
+  /// rename when it can (same folder tree), copy + delete otherwise.
+  static Future<void> _move(File from, File to) async {
+    await to.parent.create(recursive: true);
+    try {
+      await from.rename(to.path);
+    } on FileSystemException {
+      await from.copy(to.path);
+      await from.delete();
+    }
+  }
+
+  /// Deleted cards still in the trash, newest first: (stem, name, when).
+  Future<List<({String stem, String name, DateTime at})>> trashed() async {
+    final d = _dir('trash');
+    if (!d.existsSync()) return const [];
+    final out = <({String stem, String name, DateTime at})>[];
+    for (final bin in d.listSync().whereType<Directory>()) {
+      final stem = bin.uri.pathSegments.where((p) => p.isNotEmpty).last;
+      var at = bin.statSync().modified;
+      var name = stem;
+      try {
+        final m = jsonDecode(await File('${bin.path}/$_deletedMark').readAsString()) as Map<String, dynamic>;
+        at = DateTime.tryParse(m['at'] as String? ?? '') ?? at;
+        name = m['name'] as String? ?? stem;
+      } catch (_) {} // ponytail: no mark = folder date and stem
+      out.add((stem: stem, name: name, at: at));
+    }
+    return out..sort((a, b) => b.at.compareTo(a.at));
+  }
+
+  /// Puts a deleted card back where it was. False when it is not in the
+  /// trash, or when any of its files would overwrite one saved meanwhile
+  /// (a note is named 氏名_取込日.md): then nothing moves.
+  Future<bool> undelete(String stem) async {
+    final bin = Directory('${root.path}/trash/$stem');
+    if (!_safeStem(stem) || !bin.existsSync()) return false;
+    final binRoot = bin.path.length + 1;
+    final moves = <(File, File)>[];
+    for (final f in bin.listSync(recursive: true).whereType<File>()) {
+      final rel = f.path.substring(binRoot).replaceAll(r'\', '/');
+      if (rel == _deletedMark || rel.split('/').contains('..')) continue;
+      final to = File('${root.path}/$rel');
+      if (to.existsSync()) return false;
+      moves.add((f, to));
+    }
+    for (final (f, to) in moves) {
+      await _move(f, to);
+    }
+    await bin.delete(recursive: true);
+    await _writeIndex(await _dir('vault').create(recursive: true));
+    return true;
+  }
+
+  /// Empties trash older than [days]; returns how many cards went for good.
+  Future<int> purgeTrash({DateTime? now, int days = 7}) async {
+    final limit = (now ?? DateTime.now()).subtract(Duration(days: days));
+    var n = 0;
+    for (final t in await trashed()) {
+      if (t.at.isBefore(limit)) {
+        await Directory('${root.path}/trash/${t.stem}').delete(recursive: true);
+        n++;
+      }
+    }
+    return n;
   }
 
   /// Unpacks a zip made by [backup] into this store: same paths are

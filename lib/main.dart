@@ -621,6 +621,8 @@ class ScanPageState extends State<ScanPage> {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
           content: Text('「${full.displayName ?? ''}」を更新しました（$changed 項目を名刺の値に）'),
           duration: const Duration(seconds: 8),
+          // An action SnackBar otherwise never times out (Flutter 3.47).
+          persist: MediaQuery.accessibleNavigationOf(context),
           action: SnackBarAction(
             label: '元に戻す',
             onPressed: () async {

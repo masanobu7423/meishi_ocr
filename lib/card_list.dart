@@ -65,6 +65,8 @@ class CardList extends StatefulWidget {
   final ValueChanged<CardSummary>? onCall;
   /// Company order with a 「会社（N 人）」 header above each company.
   final bool groupByCompany;
+  /// まとめる in the selection bar (exactly two cards selected, list order).
+  final Future<void> Function(CardSummary a, CardSummary b)? onMerge;
   /// 自分の名刺にする in the selection bar (exactly one card selected).
   final ValueChanged<CardSummary>? onMakeMine;
   /// 連絡済み in the selection bar: records the contact for the selected cards.
@@ -84,6 +86,7 @@ class CardList extends StatefulWidget {
     this.groupByCompany = false,
     this.onFollowedUp,
     this.onMakeMine,
+    this.onMerge,
   });
 
   @override
@@ -136,6 +139,16 @@ class _CardListState extends State<CardList> {
                 },
                 icon: const Icon(Icons.edit_outlined, size: AppSize.iconSmall),
                 label: const Text('修正'),
+              ),
+            if (_chosen.length == 2 && widget.onMerge != null)
+              TextButton.icon(
+                onPressed: () {
+                  final two = _chosen;
+                  setState(_selected.clear);
+                  widget.onMerge!(two[0], two[1]);
+                },
+                icon: const Icon(Icons.merge_type, size: AppSize.iconSmall),
+                label: const Text('まとめる'),
               ),
             if (one != null && widget.onMakeMine != null)
               TextButton.icon(
@@ -469,6 +482,7 @@ class ListScreen extends StatefulWidget {
   final ValueChanged<StatusFilter>? onFilter;
   final Future<void> Function(List<CardSummary>)? onDelete, onShare, onFollowedUp;
   final ValueChanged<CardSummary>? onCall, onMakeMine;
+  final Future<void> Function(CardSummary a, CardSummary b)? onMerge;
   final DateTime? today;
   const ListScreen({
     super.key,
@@ -482,6 +496,7 @@ class ListScreen extends StatefulWidget {
     this.onFollowedUp,
     this.onCall,
     this.onMakeMine,
+    this.onMerge,
     this.today,
   });
 
@@ -536,6 +551,12 @@ class _ListScreenState extends State<ListScreen> {
             onSelectionChanged: (s) => setState(() => _sort = s.first),
           ),
         ),
+        if (_filter == StatusFilter.duplicate && shown.isNotEmpty && widget.onMerge != null)
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: AppSpace.gutter),
+            child: Text('同じ人の名刺なら、2 枚を長押しで選んで「まとめる」で 1 枚にできます（あとで元に戻せます）',
+                style: Theme.of(context).textTheme.labelMedium?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant)),
+          ),
         Expanded(
           child: CardList(
             // 連絡予定 keeps its own order (soonest first) whatever the sort control says.
@@ -547,6 +568,7 @@ class _ListScreenState extends State<ListScreen> {
             onFollowedUp: widget.onFollowedUp,
             onCall: widget.onCall,
             onMakeMine: widget.onMakeMine,
+            onMerge: widget.onMerge,
             today: widget.today,
             emptyText: widget.cards.isEmpty
                 ? 'まだ名刺がありません。撮影して保存すると、ここに並びます'

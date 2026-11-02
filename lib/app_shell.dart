@@ -1,6 +1,6 @@
 import 'dart:io';
 
-import 'package:flutter/foundation.dart' show listEquals;
+import 'package:flutter/foundation.dart' show listEquals, mapEquals;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show PlatformException;
 import 'package:flutter_contacts/flutter_contacts.dart';
@@ -14,6 +14,7 @@ import 'files.dart';
 import 'home_screen.dart';
 import 'main.dart';
 import 'ocr/actions.dart';
+import 'ocr/card_merge.dart';
 import 'ocr/card_status.dart';
 import 'ocr/card_store.dart';
 import 'ocr/contact_mapper.dart';
@@ -202,6 +203,7 @@ class _HomeShellState extends State<HomeShell> {
           Choice('share_backup', Icons.cloud_upload_outlined, 'バックアップを共有', 'ドライブやメールに保存。機種変更やアンインストールに備えます'),
           Choice('backup', Icons.archive_outlined, 'バックアップを作る', 'アプリのフォルダに保存します（毎日 1 回は自動で作ります）'),
           Choice('restore', Icons.restore, 'バックアップから復元', '保存したバックアップの名刺を取り込みます'),
+          Choice('trash', Icons.restore_from_trash_outlined, '削除した名刺を戻す', '削除してから 7 日以内の名刺を元に戻せます'),
         ]),
       _ => null,
     };
@@ -218,6 +220,7 @@ class _HomeShellState extends State<HomeShell> {
       'share_backup' => _shareBackup(),
       'jobs' => _editJobs(),
       'restore' => _restore(),
+      'trash' => _showTrash(),
       'backup' => _backup(),
       _ => Future<void>.value(),
     };
@@ -295,27 +298,124 @@ class _HomeShellState extends State<HomeShell> {
   /// each (JSON, note, photos), leave the address book alone.
   Future<void> _deleteCards(List<CardSummary> cards) async {
     if (cards.isEmpty) return;
-    final label = cards.length == 1 ? '「${cards.single.name}」' : '${cards.length} 件';
+    // No confirmation: deleting moves to the trash, and the SnackBar undoes it.
+    final (store, _) = await _ready;
+    final gone = <String>[];
+    for (final c in cards) {
+      if (await store.deleteCard(c.stem)) gone.add(c.stem);
+    }
+    _scanKey.currentState?.forget(cards.map((c) => c.stem).toSet());
+    _reload();
+    if (!mounted) return;
+    if (gone.isEmpty) {
+      _toast('削除できませんでした');
+      return;
+    }
+    _undoToast('${gone.length} 件を削除しました', () async {
+      var back = 0;
+      for (final stem in gone) {
+        if (await store.undelete(stem)) back++;
+      }
+      if (back < gone.length && mounted) _toast('同じ名前の名刺が新しく保存されているため、${gone.length - back} 件は戻せませんでした');
+    });
+  }
+
+  /// まとめる: two cards of one person become the newer one (取込日), the
+  /// older goes to the trash; both steps are undone by 元に戻す.
+  Future<void> _merge(CardSummary a, CardSummary b) async {
+    final (newer, older) = (a.scanned ?? '').compareTo(b.scanned ?? '') >= 0 ? (a, b) : (b, a);
+    final (store, _) = await _ready;
+    final n = await store.loadCard(newer.stem), o = await store.loadCard(older.stem);
+    if (!mounted) return;
+    if (n == null || o == null) {
+      _toast('まとめられませんでした。名刺が見つかりません');
+      return;
+    }
     final go = await showDialog<bool>(
       context: context,
       builder: (c) => AlertDialog(
-        title: Text('$labelを削除しますか？'),
-        content: const Text('保存した読み取り結果と写真を削除します。電話帳に登録した連絡先は残ります。'),
+        title: const Text('2 枚を 1 枚にまとめますか？'),
+        content: Text('新しい名刺（${newer.scanned ?? "日付なし"}「${newer.name}」）の内容を優先し、空いている項目を古い名刺'
+            '（${older.scanned ?? "日付なし"}「${older.name}」）で埋めます。メモ・関係者は合わせ、古い会社や役職はメモに「旧:」で残します。'
+            '古い名刺は削除した名刺に移ります。電話帳の連絡先はそのままです。'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('中止')),
-          FilledButton(onPressed: () => Navigator.pop(c, true), child: const Text('削除する')),
+          FilledButton(onPressed: () => Navigator.pop(c, true), child: const Text('まとめる')),
         ],
       ),
     );
     if (go != true) return;
-    final (store, _) = await _ready;
-    var n = 0;
-    for (final c in cards) {
-      if (await store.deleteCard(c.stem)) n++;
-    }
-    _scanKey.currentState?.forget(cards.map((c) => c.stem).toSet());
+    final merged = mergeCards(newer: n.expected, older: o.expected, olderScanned: older.scanned);
+    // The older card's phone-book link (and 登録済) carry over, so the next 保存
+    // of this card brings the old contact up to date, instead of 未登録を登録
+    // creating a second contact.
+    final inherited = (n.expected['contactId'] ?? '').isEmpty && (o.expected['contactId'] ?? '').isNotEmpty;
+    await store.replaceFields(newer.stem, merged, mergedStatus(n.status, o.status));
+    await store.deleteCard(older.stem);
+    // An open form would save the pre-merge values back: clear it.
+    _scanKey.currentState?.forget({newer.stem, older.stem});
     _reload();
-    if (mounted) _toast('$n 件を削除しました');
+    if (!mounted) return;
+    _undoToast(
+        '「${newer.name}」に 1 枚にまとめました${inherited ? '。電話帳の連絡先は、この名刺を開いて保存すると新しい内容になります' : ''}',
+        () async {
+      // Edited since (a 連絡済み, a 保存): keep that; only bring the old card back.
+      final now = await store.loadCard(newer.stem);
+      if (now != null && mapEquals(now.expected, merged)) {
+        await store.replaceFields(newer.stem, n.expected, n.status);
+      } else if (mounted) {
+        _toast('まとめた後に変更があるため、古い名刺だけ戻しました');
+      }
+      await store.undelete(older.stem);
+    });
+  }
+
+  /// 削除した名刺を戻す: the trash (7 days), one card at a time.
+  Future<void> _showTrash() async {
+    final (store, _) = await _ready;
+    final items = await store.trashed();
+    if (!mounted) return;
+    if (items.isEmpty) {
+      _toast('削除した名刺はありません（7 日たつと完全に消えます）');
+      return;
+    }
+    final stem = await showDialog<String>(
+      context: context,
+      builder: (c) => SimpleDialog(
+        title: const Text('削除した名刺を戻す'),
+        children: [
+          for (final t in items)
+            ListTile(
+              leading: const Icon(Icons.restore_from_trash_outlined),
+              title: Text(t.name),
+              subtitle: Text('${ymd(t.at)} に削除'),
+              onTap: () => Navigator.pop(c, t.stem),
+            ),
+        ],
+      ),
+    );
+    if (stem == null) return;
+    final ok = await store.undelete(stem);
+    _reload();
+    if (mounted) _toast(ok ? '名刺を元に戻しました' : '同じ名前の名刺が新しく保存されているため、戻せませんでした');
+  }
+
+  /// A SnackBar with 元に戻す; the undo reloads the lists when done. An
+  /// action SnackBar would stay forever by default: it times out, except for
+  /// screen-reader users, who need the time to reach the action.
+  void _undoToast(String message, Future<void> Function() undo) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(message),
+      duration: const Duration(seconds: 8),
+      persist: MediaQuery.accessibleNavigationOf(context),
+      action: SnackBarAction(
+        label: '元に戻す',
+        onPressed: () async {
+          await undo();
+          _reload();
+        },
+      ),
+    ));
   }
 
   // ---- account / sync ------------------------------------------------------
@@ -597,6 +697,11 @@ class _HomeShellState extends State<HomeShell> {
       } catch (e) {
         await r.$1.appendError('autoBackup', e);
       }
+      try {
+        await r.$1.purgeTrash(); // deleted more than 7 days ago: gone for good
+      } catch (e) {
+        await r.$1.appendError('purgeTrash', e);
+      }
     });
   }
 
@@ -700,6 +805,7 @@ class _HomeShellState extends State<HomeShell> {
                 onFollowedUp: _followedUp,
                 onCall: _call,
                 onMakeMine: _makeMine,
+                onMerge: _merge,
                 filter: _listFilter,
                 onFilter: (f) => setState(() => _listFilter = f),
               ),
