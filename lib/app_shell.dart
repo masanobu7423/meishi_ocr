@@ -64,7 +64,7 @@ class _HomeShellState extends State<HomeShell> {
   /// settings.json: the day a backup last left the phone, and 自分の名刺's stem.
   String? _lastExport, _myCard;
 
-  Future<void> _setSetting(String key, String value) async {
+  Future<void> _setSetting(String key, Object value) async {
     final (store, _) = await _ready;
     await store.saveSettings({...await store.loadSettings(), key: value});
   }
@@ -646,7 +646,11 @@ class _HomeShellState extends State<HomeShell> {
     if (go != true) return;
     final (int written, int failed) result;
     try {
-      result = await _busy(store.restore(picked));
+      // A backup from before 2026-11-02 brings back notes cut at a line break.
+      result = await _busy(store.restore(picked).then((r) async {
+        await store.repairNotes();
+        return r;
+      }));
     } catch (e) {
       await store.appendError('restore ${picked.path}', e);
       if (mounted) _toast('復元できませんでした。zip が壊れているか、バックアップの形式ではありません');
@@ -701,6 +705,16 @@ class _HomeShellState extends State<HomeShell> {
         await r.$1.purgeTrash(); // deleted more than 7 days ago: gone for good
       } catch (e) {
         await r.$1.appendError('purgeTrash', e);
+      }
+      // Once: rebuild notes cut at a line break before 2026-11-02 (R0).
+      try {
+        if ((await r.$1.loadSettings())['notesRepaired'] != true) {
+          final n = await r.$1.repairNotes();
+          await _setSetting('notesRepaired', true);
+          if (n > 0 && mounted) _reload();
+        }
+      } catch (e) {
+        await r.$1.appendError('repairNotes', e);
       }
     });
   }

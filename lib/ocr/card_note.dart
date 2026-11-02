@@ -90,7 +90,13 @@ String cardNoteMarkdown(CardFields f,
     if (vertical) '縦書き',
   ];
 
-  String fm(String k, String? v) => v == null || v.isEmpty ? '' : '$k: $v\n';
+  // One line per value: a line break (a phone-book street or note) becomes
+  // " / ", so nothing after it is cut and no memo line passes for a field.
+  // The golden JSON keeps the value as it was.
+  String fm(String k, String? v) {
+    final one = v?.trim().replaceAll(RegExp(r'\s*\r?\n\s*'), ' / ');
+    return one == null || one.isEmpty ? '' : '$k: $one\n';
+  }
   final b = StringBuffer()
     ..write('---\n')
     ..write('type: meishi\n')

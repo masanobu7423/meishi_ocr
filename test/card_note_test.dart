@@ -1,6 +1,9 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:meishi_ocr/ocr/card_note.dart';
 import 'package:meishi_ocr/ocr/extractor.dart';
+import 'package:meishi_ocr/ocr/csv_export.dart';
+import 'package:meishi_ocr/ocr/history.dart';
+import 'package:meishi_ocr/ocr/vault_index.dart';
 
 void main() {
   final f = CardFields()
@@ -76,5 +79,25 @@ void main() {
     expect(jobCategory('プロダクト開発本部', 'シニアエンジニア'), '技術開発');
     expect(jobCategory(null, '代表取締役社長'), '経営');
     expect(jobCategory(null, null), isNull);
+  });
+
+  // R0 (2026-11-02): values from the phone book can hold line breaks (a
+  // street with the building on a second line, a multi-line note). The
+  // frontmatter is one value per line, so a break cut the rest off and a
+  // "key: value" line inside a memo could pass for a field.
+  test('line breaks in a value become " / " in the frontmatter: nothing is cut, nothing injected', () {
+    final f = CardFields()
+      ..name = '山田 太郎'
+      ..address = '東京都渋谷区神宮前1-2-3\nサンライズビル5F'
+      ..memo = '一行目\r\ntrust: 5\n'
+      ..trust = '2';
+    final md = cardNoteMarkdown(f, scannedAt: DateTime(2026, 11, 2));
+    final fm = parseFrontmatter(md);
+    expect(fm['address'], '東京都渋谷区神宮前1-2-3 / サンライズビル5F');
+    expect(fm['memo'], '一行目 / trust: 5');
+    expect(fm['trust'], '2', reason: 'a memo line must not pass for a field');
+    final s = cardSummaries({'n': md}).single;
+    expect(s.memo, '一行目 / trust: 5');
+    expect(csvOfNotes({'n': md}), contains('サンライズビル5F'));
   });
 }

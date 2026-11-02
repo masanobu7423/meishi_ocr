@@ -68,6 +68,8 @@ class CardStore {
     File? backImage,
     DateTime? scannedAt,
     CardStatus status = CardStatus.reviewed,
+    // False for a batch that rewrites the index once at the end.
+    bool writeIndex = true,
   }) async {
     final vertical = isVertical(front);
     final vault = await _dir('vault').create(recursive: true);
@@ -119,7 +121,7 @@ class CardStore {
       // Same folder, so compare names: listSync and our path differ in separators on Windows.
       if (f.uri.pathSegments.last != note.uri.pathSegments.last) await f.delete();
     }
-    await _writeIndex(vault);
+    if (writeIndex) await _writeIndex(vault);
     return file;
   }
 
@@ -130,6 +132,27 @@ class CardStore {
   /// date stay). False when nothing is stored under [stem].
   Future<bool> setStatus(String stem, CardStatus status, {String? contactId}) =>
       _resave(stem, (c) => (status, {...c.expected, 'contactId': ?contactId}));
+
+  /// Notes written before 2026-11-02 cut a value at its first line break
+  /// (phone-book streets and notes); the golden JSON kept it whole. Rebuilds
+  /// the notes of cards with a line break in any value; returns how many.
+  Future<int> repairNotes() async {
+    final golden = _dir('golden');
+    if (!golden.existsSync()) return 0;
+    var n = 0;
+    for (final f in golden.listSync().whereType<File>().where((f) => f.path.endsWith('.json'))) {
+      final stem = f.uri.pathSegments.last.replaceAll(RegExp(r'\.json$'), '');
+      try {
+        final c = await loadCard(stem);
+        if (c == null || !c.expected.values.any((v) => v != null && v.contains('\n'))) continue;
+        if (await _resave(stem, (c) => (c.status, c.expected), writeIndex: false)) n++;
+      } catch (e) {
+        await appendError('repairNotes $stem', e); // one broken card must not stop the rest
+      }
+    }
+    if (n > 0) await _writeIndex(await _dir('vault').create(recursive: true));
+    return n;
+  }
 
   /// Rewrites a card's fields and status (まとめる, and its undo); lines,
   /// images and the first scan date stay.
@@ -143,7 +166,8 @@ class CardStore {
 
   /// Re-saves a stored card with a new status / fields; lines, images and
   /// the first scan date stay. False when the card is missing.
-  Future<bool> _resave(String stem, (CardStatus, Map<String, String?>) Function(StoredCard) change) async {
+  Future<bool> _resave(String stem, (CardStatus, Map<String, String?>) Function(StoredCard) change,
+      {bool writeIndex = true}) async {
     final c = await loadCard(stem);
     if (c == null) return false;
     final (status, expected) = change(c);
@@ -156,6 +180,7 @@ class CardStore {
       frontImage: c.frontImage,
       backImage: c.backImage,
       status: status,
+      writeIndex: writeIndex,
     );
     return true;
   }
@@ -273,16 +298,28 @@ class CardStore {
   }
 
   /// Empties trash older than [days]; returns how many cards went for good.
+  /// Their lines in log/corrections.jsonl (old and new values) go too.
   Future<int> purgeTrash({DateTime? now, int days = 7}) async {
     final limit = (now ?? DateTime.now()).subtract(Duration(days: days));
-    var n = 0;
+    final gone = <String>{};
     for (final t in await trashed()) {
       if (t.at.isBefore(limit)) {
         await Directory('${root.path}/trash/${t.stem}').delete(recursive: true);
-        n++;
+        gone.add(t.stem);
       }
     }
-    return n;
+    final log = File('${root.path}/log/corrections.jsonl');
+    if (gone.isNotEmpty && log.existsSync()) {
+      final keep = (await log.readAsLines()).where((l) {
+        try {
+          return !gone.contains((jsonDecode(l) as Map)['stem']);
+        } catch (_) {
+          return true; // ponytail: an unreadable line is kept, not guessed at
+        }
+      });
+      await log.writeAsString(keep.map((l) => '$l\n').join());
+    }
+    return gone.length;
   }
 
   /// Unpacks a zip made by [backup] into this store: same paths are
