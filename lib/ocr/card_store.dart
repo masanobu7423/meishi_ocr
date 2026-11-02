@@ -1,7 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:archive/archive.dart';
+import 'package:archive/archive_io.dart';
 import 'package:image/image.dart' as img;
 
 import 'card_note.dart';
@@ -208,13 +208,22 @@ class CardStore {
   /// logged to log/errors.txt.
   Future<(int, int)> restore(File zip) async {
     var written = 0, failed = 0;
-    for (final e in ZipDecoder().decodeBytes(await zip.readAsBytes())) {
+    // Streamed: a user-picked file can be large; only one entry is in memory.
+    final input = InputFileStream(zip.path);
+    try {
+    for (final e in ZipDecoder().decodeStream(input)) {
       if (!e.isFile) continue;
       final rel = e.name.replaceAll('\\', '/');
       final inside = rel.startsWith('vault/') || rel.startsWith('golden/') || _rootFiles.contains(rel);
       if (!inside || rel.split('/').contains('..')) continue;
       final out = File('${root.path}/$rel');
       if (_rootFiles.contains(rel) && out.existsSync()) continue;
+      // One entry is unpacked in memory: nothing we write comes near 100 MB.
+      if (e.size > 100 << 20) {
+        failed++;
+        await appendError('restore $rel', 'skipped: ${e.size} bytes');
+        continue;
+      }
       try {
         await out.create(recursive: true);
         await out.writeAsBytes(e.content);
@@ -223,6 +232,9 @@ class CardStore {
         failed++;
         await appendError('restore $rel', err);
       }
+    }
+    } finally {
+      await input.close();
     }
     await _writeIndex(await _dir('vault').create(recursive: true));
     return (written, failed);

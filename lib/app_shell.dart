@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show PlatformException;
 import 'package:flutter_contacts/flutter_contacts.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
@@ -9,6 +10,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import 'card_list.dart';
 import 'choice_sheet.dart';
+import 'files.dart';
 import 'home_screen.dart';
 import 'main.dart';
 import 'ocr/actions.dart';
@@ -25,6 +27,7 @@ import 'jobs_screen.dart';
 import 'ocr/ics_export.dart';
 import 'ocr/jobs.dart';
 import 'share.dart';
+import 'theme.dart';
 
 /// Android: `/sdcard/Android/data/<pkg>/files` (reachable with plain adb pull
 /// and the Files app). Elsewhere: app documents.
@@ -57,12 +60,52 @@ class _HomeShellState extends State<HomeShell> {
   Map<String, List<String>> _suggestions = const {};
   List<String> _jobs = defaultJobs;
   StatusFilter _listFilter = StatusFilter.all;
+  /// settings.json: the day a backup last left the phone, and 自分の名刺's stem.
+  String? _lastExport, _myCard;
+
+  Future<void> _setSetting(String key, String value) async {
+    final (store, _) = await _ready;
+    await store.saveSettings({...await store.loadSettings(), key: value});
+  }
+
+  /// 自分の名刺にする (one card selected in the list).
+  Future<void> _makeMine(CardSummary c) async {
+    await _setSetting('myCard', c.stem);
+    if (!mounted) return;
+    setState(() => _myCard = c.stem);
+    _toast('「${c.name}」を自分の名刺にしました。ホームの「自分の名刺を送る」で渡せます');
+  }
+
+  /// 自分の名刺を送る: as text (LINE, SMS) or as a vCard (mail, contacts).
+  Future<void> _sendMine() async {
+    final (store, _) = await _ready;
+    final stored = _myCard == null ? null : await store.loadCard(_myCard!);
+    if (!mounted) return;
+    if (stored == null) {
+      _toast('自分の名刺が見つかりません。一覧で選び直してください');
+      return;
+    }
+    final f = fieldsFromJson(stored.expected);
+    final how = await showChoiceSheet(context, '自分の名刺を送る', const [
+      Choice('text', Icons.chat_outlined, 'テキストで送る', 'LINE や SMS に、氏名・会社・電話・メールを文字で貼ります'),
+      Choice('vcard', Icons.contact_page_outlined, '連絡先ファイル（vCard）で送る', 'メールで送ると、相手がそのまま電話帳に登録できます'),
+    ]);
+    if (how == null) return;
+    final name = f.name ?? '自分の名刺';
+    final ok = how == 'text'
+        ? await shareMessage(cardText(f), subject: '名刺: $name')
+        : await shareVcard(name, myCardVcard(f));
+    if (!ok && mounted) _toast('共有できませんでした');
+  }
 
   Future<List<CardSummary>> _load() async {
     final (store, _) = await _ready;
     final notes = await store.notes();
     _suggestions = suggestionsFrom(notes);
     _jobs = await store.loadJobs();
+    final settings = await store.loadSettings();
+    _lastExport = settings['lastExport'] as String?;
+    _myCard = settings['myCard'] as String?;
     return cardSummaries(notes);
   }
 
@@ -236,9 +279,16 @@ class _HomeShellState extends State<HomeShell> {
       if (mounted) _toast('バックアップする名刺がありません');
       return;
     }
-    if (!await shareFile(zip, mime: 'application/zip', subject: '名刺スキャンのバックアップ') && mounted) {
-      _toast('共有できませんでした');
+    // Gone through (not cancelled): the copy is off the phone, the home nudge rests.
+    final today = ymd(DateTime.now());
+    var shared = false;
+    final ok = await shareFile(zip, mime: 'application/zip', subject: '名刺スキャンのバックアップ',
+        onShared: () => shared = true);
+    if (shared) {
+      await _setSetting('lastExport', today);
+      if (mounted) setState(() => _lastExport = today);
     }
+    if (!ok && mounted) _toast('共有できませんでした');
   }
 
   /// Selected on the home / search / list screens: confirm once, delete
@@ -319,9 +369,7 @@ class _HomeShellState extends State<HomeShell> {
       ),
     );
     if (picked == null) return;
-    final (store, _) = await _ready;
-    final settings = await store.loadSettings();
-    await store.saveSettings({...settings, 'accountKey': accountKey(picked)});
+    await _setSetting('accountKey', accountKey(picked));
     setState(() {
       _account = picked;
       _accountResolved = true;
@@ -435,15 +483,19 @@ class _HomeShellState extends State<HomeShell> {
     final (store, _) = await _ready;
     final zips = await store.backups();
     if (!mounted) return;
-    if (zips.isEmpty) {
-      _toast('バックアップがありません。メニューで作るか、zip を ${store.root.path}/backup に置いてください');
-      return;
-    }
-    final picked = await showDialog<File>(
+    // A zip from Drive / Downloads (the new phone after a model change), or
+    // one of the automatic backups in the app folder.
+    final choice = await showDialog<Object>(
       context: context,
       builder: (c) => SimpleDialog(
         title: const Text('バックアップから復元'),
         children: [
+          ListTile(
+            leading: const Icon(Icons.folder_open_outlined),
+            title: const Text('ファイルから選ぶ'),
+            subtitle: const Text('ドライブやダウンロードに保存したバックアップ（.zip）'),
+            onTap: () => Navigator.pop(c, 'pick'),
+          ),
           for (final z in zips)
             ListTile(
               leading: const Icon(Icons.archive_outlined),
@@ -453,12 +505,37 @@ class _HomeShellState extends State<HomeShell> {
         ],
       ),
     );
-    if (picked == null || !mounted) return;
+    if (choice == null || !mounted) return;
+    final fromFile = choice == 'pick';
+    final File? picked;
+    try {
+      // The picker copies the zip off Drive after it closes: show that work.
+      picked = fromFile ? await _busy(pickBackupZip()) : choice as File;
+    } on PlatformException catch (e) {
+      if (mounted) {
+        _toast(e.code == 'too_large'
+            ? 'ファイルが大きすぎます（512MB まで）。名刺スキャンのバックアップ（.zip）を選んでください'
+            : 'ファイルを読み込めませんでした。もう一度選ぶか、端末に保存してから選んでください');
+      }
+      return;
+    }
+    if (picked == null) return;
+    try {
+      await _restoreFrom(store, picked, fromFile);
+    } finally {
+      // The picker's copy lives in the cache; the app-folder backups stay.
+      if (fromFile && picked.existsSync()) await picked.delete();
+    }
+  }
+
+  Future<void> _restoreFrom(CardStore store, File picked, bool fromFile) async {
+    if (!mounted) return;
+    final label = fromFile ? '選んだファイル' : '${backupLabel(picked)} ';
     final go = await showDialog<bool>(
       context: context,
       builder: (c) => AlertDialog(
         title: const Text('復元しますか？'),
-        content: Text('${backupLabel(picked)} のバックアップの名刺を取り込みます。'
+        content: Text('$labelのバックアップの名刺を取り込みます。'
             '同じ名刺は上書きし、ほかの名刺はそのまま残ります。電話帳は変わりません。'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('中止')),
@@ -469,7 +546,7 @@ class _HomeShellState extends State<HomeShell> {
     if (go != true) return;
     final (int written, int failed) result;
     try {
-      result = await store.restore(picked);
+      result = await _busy(store.restore(picked));
     } catch (e) {
       await store.appendError('restore ${picked.path}', e);
       if (mounted) _toast('復元できませんでした。zip が壊れているか、バックアップの形式ではありません');
@@ -478,9 +555,32 @@ class _HomeShellState extends State<HomeShell> {
     _reload();
     if (!mounted) return;
     final (written, failed) = result;
-    _toast(failed == 0
+    _toast(written == 0 && failed == 0
+        ? 'このファイルには名刺のバックアップが入っていません'
+        : failed == 0
         ? '$written ファイルを復元しました'
         : '$written ファイルを復元、$failed ファイルは書き込めませんでした（log/errors.txt に記録）');
+  }
+
+  /// [work] under a modal 読み込み中… (restore and the picker's copy take
+  /// seconds; without it the screen looks frozen and gets tapped again).
+  Future<T> _busy<T>(Future<T> work) async {
+    final nav = Navigator.of(context);
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const PopScope(
+        canPop: false,
+        child: AlertDialog(
+          content: Row(children: [CircularProgressIndicator(), SizedBox(width: AppSpace.gutter), Text('読み込み中…')]),
+        ),
+      ),
+    );
+    try {
+      return await work;
+    } finally {
+      nav.pop();
+    }
   }
 
   void _toast(String m) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m)));
@@ -564,6 +664,11 @@ class _HomeShellState extends State<HomeShell> {
                 onShare: _shareCards,
                 onCall: _call,
                 onFollowedUp: _followedUp,
+                lastExport: _lastExport,
+                onBackup: _shareBackup,
+                // A deleted 自分の名刺 simply stops showing the button.
+                myCardName: cards.where((c) => c.stem == _myCard).firstOrNull?.name,
+                onSendMine: _sendMine,
                 onSeeAll: () => _go(3),
                 onContinue: (f) {
                   setState(() => _listFilter = f);
@@ -594,6 +699,7 @@ class _HomeShellState extends State<HomeShell> {
                 onShare: _shareCards,
                 onFollowedUp: _followedUp,
                 onCall: _call,
+                onMakeMine: _makeMine,
                 filter: _listFilter,
                 onFilter: (f) => setState(() => _listFilter = f),
               ),

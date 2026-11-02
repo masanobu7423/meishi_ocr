@@ -23,6 +23,13 @@ class HomeScreen extends StatelessWidget {
   final ValueChanged<StatusFilter>? onContinue;
   /// Long-press selection, deletion and sharing in the recent list.
   final Future<void> Function(List<CardSummary>)? onDelete, onShare;
+  /// Last day the backup was copied off the phone (settings `lastExport`);
+  /// with [onBackup], a reminder appears when it is missing or old.
+  final String? lastExport;
+  final VoidCallback? onBackup;
+  /// 自分の名刺: its name (null = none set) and the send action.
+  final String? myCardName;
+  final VoidCallback? onSendMine;
   /// The due follow-ups list: call from the row, 連絡済み from the bar.
   final ValueChanged<CardSummary>? onCall;
   final Future<void> Function(List<CardSummary>)? onFollowedUp;
@@ -44,6 +51,10 @@ class HomeScreen extends StatelessWidget {
     this.onShare,
     this.onCall,
     this.onFollowedUp,
+    this.lastExport,
+    this.onBackup,
+    this.myCardName,
+    this.onSendMine,
   });
 
   @override
@@ -54,6 +65,7 @@ class HomeScreen extends StatelessWidget {
     final thisMonth = cards.where((c) => (c.scanned ?? '').startsWith(month)).length;
     final recent = sortCards(cards, CardSort.date).take(5).toList();
     final dueList = dueCards(cards, today: today);
+    final nudge = backupNudge(lastExport: lastExport, today: today, cards: cards.length);
     final due = dueList.length;
     final dups = duplicateStems(cards).length;
     final check = cards.where((c) => c.needsCheck).length;
@@ -124,6 +136,37 @@ class HomeScreen extends StatelessWidget {
             ),
           ],
         ),
+        if (myCardName != null && onSendMine != null) ...[
+          const SizedBox(height: AppSpace.unit),
+          OutlinedButton.icon(
+            onPressed: onSendMine,
+            icon: const Icon(Icons.send_outlined),
+            label: Text('自分の名刺を送る（$myCardName）'),
+          ),
+        ],
+        // The only copy is on this phone: say so until it is copied off.
+        if (onBackup != null && nudge != null) ...[
+          const SizedBox(height: AppSpace.gutter),
+          Container(
+            padding: const EdgeInsets.all(AppSpace.gutter),
+            decoration: BoxDecoration(
+              color: scheme.tertiaryContainer,
+              borderRadius: BorderRadius.circular(AppRadius.medium),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(nudge, style: text.bodyMedium?.copyWith(color: scheme.onTertiaryContainer)),
+                const SizedBox(height: AppSpace.unit),
+                FilledButton.tonalIcon(
+                  onPressed: onBackup,
+                  icon: const Icon(Icons.cloud_upload_outlined),
+                  label: const Text('バックアップを共有'),
+                ),
+              ],
+            ),
+          ),
+        ],
         // Who to call this week, soonest first, callable from the row.
         if (dueList.isNotEmpty) ...[
           const SizedBox(height: AppSpace.gutter),

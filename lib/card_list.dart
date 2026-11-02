@@ -65,6 +65,8 @@ class CardList extends StatefulWidget {
   final ValueChanged<CardSummary>? onCall;
   /// Company order with a 「会社（N 人）」 header above each company.
   final bool groupByCompany;
+  /// 自分の名刺にする in the selection bar (exactly one card selected).
+  final ValueChanged<CardSummary>? onMakeMine;
   /// 連絡済み in the selection bar: records the contact for the selected cards.
   final Future<void> Function(List<CardSummary> cards)? onFollowedUp;
   const CardList({
@@ -81,6 +83,7 @@ class CardList extends StatefulWidget {
     this.onCall,
     this.groupByCompany = false,
     this.onFollowedUp,
+    this.onMakeMine,
   });
 
   @override
@@ -133,6 +136,15 @@ class _CardListState extends State<CardList> {
                 },
                 icon: const Icon(Icons.edit_outlined, size: AppSize.iconSmall),
                 label: const Text('修正'),
+              ),
+            if (one != null && widget.onMakeMine != null)
+              TextButton.icon(
+                onPressed: () {
+                  setState(_selected.clear);
+                  widget.onMakeMine!(one);
+                },
+                icon: const Icon(Icons.badge_outlined, size: AppSize.iconSmall),
+                label: const Text('自分の名刺にする'),
               ),
             if (widget.onFollowedUp != null)
               TextButton.icon(
@@ -456,7 +468,7 @@ class ListScreen extends StatefulWidget {
   final StatusFilter filter;
   final ValueChanged<StatusFilter>? onFilter;
   final Future<void> Function(List<CardSummary>)? onDelete, onShare, onFollowedUp;
-  final ValueChanged<CardSummary>? onCall;
+  final ValueChanged<CardSummary>? onCall, onMakeMine;
   final DateTime? today;
   const ListScreen({
     super.key,
@@ -469,6 +481,7 @@ class ListScreen extends StatefulWidget {
     this.onShare,
     this.onFollowedUp,
     this.onCall,
+    this.onMakeMine,
     this.today,
   });
 
@@ -533,6 +546,7 @@ class _ListScreenState extends State<ListScreen> {
             onShare: widget.onShare,
             onFollowedUp: widget.onFollowedUp,
             onCall: widget.onCall,
+            onMakeMine: widget.onMakeMine,
             today: widget.today,
             emptyText: widget.cards.isEmpty
                 ? 'まだ名刺がありません。撮影して保存すると、ここに並びます'

@@ -231,3 +231,16 @@ Set<String> duplicateStems(List<CardSummary> cards) {
       if (stems.toSet().length > 1) ...stems,
   };
 }
+
+/// Home's reminder to copy the backup off the phone: never done (or an
+/// unreadable date), or [days] days or more ago. Null when there is nothing
+/// to lose or the copy is recent.
+String? backupNudge({required String? lastExport, required DateTime today, required int cards, int days = 30}) {
+  if (cards == 0) return null;
+  final last = parseYmd(lastExport);
+  if (last == null) {
+    return 'バックアップを端末の外に保存したことがありません。故障や機種変更で名刺が消えないよう、ドライブやメールに保存してください';
+  }
+  final n = DateTime(today.year, today.month, today.day).difference(last).inDays;
+  return n < days ? null : '最後にバックアップを端末の外に保存してから $n 日たちました。新しい名刺も含めて保存し直してください';
+}
