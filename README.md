@@ -78,6 +78,8 @@ adb pull /sdcard/Android/data/jp.tobishoku.meishi_ocr/files/golden ./pulled
 
 ## リリース（内部テスト）
 
+**通信とバックアップ（2026-11-02）**: リリース版は `INTERNET` を持たない（`android/app/src/release/AndroidManifest.xml` で、ML Kit の送信部品が持ち込むものを外している）。そのため、診断情報は送信されない（送信ジョブは例外を出して止まり、アプリは落ちない。実機で確認済み）。OS のバックアップは、クラウドを除外している。端末間の直接転送は Android 12 以降だけ許可し、Android 11 以前は転送も含めて除外している（`res/xml/data_extraction_rules.xml`、`backup_rules.xml`）。リリース版のマージ済みマニフェストは `build/app/intermediates/merged_manifest/release/` で確かめられる。依存を足して `INTERNET` が必要になったら、この 2 つとプライバシーポリシーを一緒に見直す。
+
 - バージョンは `pubspec.yaml` の `version: <name>+<code>`。v0.2.0 (2) から Play 内部テスト用。
 - **Android AAB**: `flutter build appbundle --release`。署名は `android/key.properties`（git 外）が指す
   `android/app/upload-keystore.jks`（git 外、SHA1 `0E:3A:6E:…:5E:55`）。この 2 ファイルは必ずバックアップし、失くすと同じ

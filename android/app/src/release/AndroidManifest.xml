@@ -1,0 +1,10 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+    <!-- Release only (2026-11-02, owner's decision 1): ML Kit's telemetry library
+         (com.google.android.datatransport:transport-backend-cct) adds INTERNET to send
+         diagnostics to Google. The app needs no network: the OCR models are bundled,
+         and Play services downloads the scanner module itself. Debug and profile keep
+         INTERNET for the Flutter tool. ACCESS_NETWORK_STATE stays: the library schedules
+         jobs with a network constraint, which needs it, and it carries no data. -->
+    <uses-permission android:name="android.permission.INTERNET" tools:node="remove" />
+</manifest>
