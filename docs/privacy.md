@@ -1,6 +1,6 @@
 # 名刺スキャン プライバシーポリシー / Privacy Policy
 
-最終更新 / Last updated: 2026-11-02
+最終更新 / Last updated: 2026-11-03
 公開 URL / Public URL: https://masanobu7423.github.io/meishi_ocr/privacy.html
 
 ## 日本語
@@ -10,9 +10,11 @@
 ### 1. 基本方針
 本アプリは、名刺の画像・読み取った文字・連絡先など利用者の情報を、開発者のサーバーや第三者のサーバーに送信しません。広告 SDK は含みません。文字認識は端末内で行い、名刺の画像が端末の外に送られることはありません。
 
-ただし、本アプリが使う Google の ML Kit（文字認識とドキュメントスキャナー）は、機能の診断と利用状況の分析のために、次の情報を暗号化した通信で Google に送ります。端末の情報（メーカー、機種、OS のバージョンなど）、アプリのパッケージ名とバージョン、処理の性能、機能の設定、入出力の大きさ、イベントの種類、エラーコード、インストールごとの識別子です。名刺の画像や読み取った文字の内容は含みません。詳しくは Google の説明（https://developers.google.com/ml-kit/android-data-disclosure ）をご覧ください。
+本アプリ（バージョン 0.2.16 以降）は、インターネットに接続する権限を持たず、通信を行いません。本アプリが使う Google の ML Kit（文字認識とドキュメントスキャナー）には、診断情報を Google に送る仕組みがあります。しかし本アプリでは通信ができないため、送信されません。
 
-このほかに端末の外へ情報が出るのは、第 4 項（OS による連絡先の同期）、第 6 項（利用者の操作による引き渡し）、第 8 項（Android のバックアップ）の場合だけです。
+バージョン 0.2.15 以前では、ML Kit が機能の診断と利用状況の分析のために、次の情報を暗号化した通信で Google に送っていました。端末の情報（メーカー、機種、OS のバージョンなど）、アプリのパッケージ名とバージョン、処理の性能、機能の設定、入出力の大きさ、イベントの種類、エラーコード、インストールごとの識別子です。名刺の画像や読み取った文字の内容は含みません（Google の説明: https://developers.google.com/ml-kit/android-data-disclosure ）。アプリを最新版に更新すると、この送信は止まります。
+
+端末の外へ情報が出るのは、第 4 項（OS による連絡先の同期）と第 6 項（利用者の操作による引き渡し）の場合だけです。
 
 ### 2. 端末内で扱う情報
 - カメラで撮影した名刺の画像（表・裏）、およびアルバムやフォルダから取り込んだ画像
@@ -24,7 +26,7 @@
 - 削除した名刺（第 8 項のとおり 7 日間）
 - 動作の記録（エラーが起きた処理の名前、対象のファイル名（名刺のファイル名には氏名が含まれます）、エラーの文、画像の傾き補正の結果）。不具合の調査のために端末内にだけ残します
 
-これらは端末内のアプリ専用領域（`Android/data/jp.tobishoku.meishi_ocr/files`）と、アプリのキャッシュに保存されます。利用者が自分で移動・共有しない限り、端末の外に出ることはありません（第 8 項の Android のバックアップを除きます）。
+これらは端末内のアプリ専用領域（`Android/data/jp.tobishoku.meishi_ocr/files`）と、アプリのキャッシュに保存されます。利用者が自分で移動・共有しない限り、端末の外に出ることはありません（機種変更時の端末間の引き継ぎは第 8 項をご覧ください）。
 
 ### 3. 連絡先へのアクセス
 本アプリは、次の操作をしたときにのみ、端末の連絡先を読み書きします。
@@ -40,7 +42,7 @@
 登録先として Google アカウントを選んだ場合、連絡先（第 3 項のメモ欄を含みます）は、Android の連絡先同期の仕組みによって、その Google アカウントの連絡先（Google コンタクト）に保存されます。この送信は端末の OS が行うもので、本アプリが Google のサーバーと直接通信することはありません。Google 側での取り扱いは Google のプライバシーポリシーに従います。端末のローカルアカウントを選べば、連絡先は端末内にとどまります。
 
 ### 5. Google Play 開発者サービス
-撮影時の名刺の辺検出と歪み補正には、Google Play 開発者サービスが提供する ML Kit ドキュメントスキャナーを使います。文字認識とスキャナーのモジュールは、初回利用時に Google Play 開発者サービスがダウンロードすることがあります。処理そのものは端末内で行われ、画像は Google に送られません。診断情報の送信は第 1 項のとおりです。
+撮影時の名刺の辺検出と歪み補正には、Google Play 開発者サービスが提供する ML Kit ドキュメントスキャナーを使います。文字認識とスキャナーのモジュールは、初回利用時に Google Play 開発者サービスがダウンロードすることがあります。処理そのものは端末内で行われ、画像は Google に送られません。本アプリは通信しないため、診断情報も送信されません（第 1 項）。
 
 ### 6. 外部アプリへの引き渡し
 次の引き渡しは、利用者の操作があったときだけ行います。引き渡した先での取り扱いは、それぞれのアプリのポリシーに従います。
@@ -54,7 +56,7 @@
 - カメラ: 名刺の撮影
 - 連絡先の読み取り・書き込み: 第 3 項の操作
 - ストレージの読み取り（Android 12 以前）・書き込み（Android 9 以前）: 写真の選択と撮影の部品が求めるもの。アプリが読み書きするのは、利用者が選んだ画像と、アプリ専用領域だけです
-- ネットワークへのアクセス、ネットワークの状態の確認: 第 1 項の ML Kit の診断情報の送信
+- ネットワークの状態の確認: ML Kit の部品が宣言しているものです。本アプリはインターネットへのアクセス権限を持たないため、通信には使われません
 
 共有、カレンダーへの登録、ファイルの選択は、端末の標準の画面を使います。そのため、追加の権限は使いません。
 
@@ -64,7 +66,7 @@
 - 削除した名刺は、削除する前に作られた自動バックアップ（最新の 5 つ）と、利用者が書き出した vCard・CSV には残ります。自動バックアップは新しいものが作られると古い順に削除されます。
 - アンインストールすると、アプリ専用領域の保存データ（ゴミ箱と自動バックアップを含む）はすべて削除されます。
 
-Android のバックアップ: 端末の設定で Google へのバックアップが有効になっている場合、Android の仕組みにより、アプリ専用領域のデータ（名刺、画像、設定など）が、利用者の Google アカウントのバックアップに含まれることがあります。新しい端末に移ったときに復元されます。この送信は端末の OS が行い、Google 側での取り扱いは Google のポリシーに従います。端末の設定でバックアップを無効にすれば、送信されません。
+Android のバックアップ: 本アプリのデータは、Google アカウントへのクラウド バックアップには含めません（バージョン 0.2.16 以降）。Android 12 以降の端末どうしの直接の引き継ぎ（機種変更）では、アプリのデータが新しい端末に移ります。この転送は端末の OS が行います。バージョン 0.2.15 以前では、端末の設定で Google へのバックアップが有効な場合、アプリのデータがバックアップに含まれることがありました。
 
 連絡先に登録した情報は、端末の連絡先アプリ（Google アカウントの場合は Google コンタクト）から削除してください。利用者が自分で端末の外に移したり共有したりしたバックアップ・vCard・CSV は、利用者の管理下にあります。
 
@@ -85,9 +87,11 @@ Android のバックアップ: 端末の設定で Google へのバックアッ�
 ### 1. Principle
 The app does not send your information (card images, recognised text, contacts) to the developer's servers or to any third-party server. It contains no advertising SDKs. Text recognition runs on the device, and card images never leave it.
 
-However, Google's ML Kit, which the app uses for text recognition and the document scanner, sends the following to Google over an encrypted connection for diagnostics and usage analytics: device information (manufacturer, model, OS version and similar), the app's package name and version, performance metrics, feature configuration, input and output sizes, event types, error codes, and a per-installation identifier. It does not include card images or the recognised text. Google's description: https://developers.google.com/ml-kit/android-data-disclosure
+The app (version 0.2.16 and later) has no permission to connect to the internet and makes no network connections. Google's ML Kit, which the app uses for text recognition and the document scanner, includes a mechanism that sends diagnostics to Google, but nothing is sent because the app cannot connect.
 
-Otherwise, information leaves the device only as described in section 4 (contact sync by the operating system), section 6 (hand-offs the user starts) and section 8 (Android backup).
+In version 0.2.15 and earlier, ML Kit sent the following to Google over an encrypted connection for diagnostics and usage analytics: device information (manufacturer, model, OS version and similar), the app's package name and version, performance metrics, feature configuration, input and output sizes, event types, error codes, and a per-installation identifier. It did not include card images or the recognised text. Updating the app to the latest version stops this. Google's description: https://developers.google.com/ml-kit/android-data-disclosure
+
+Information leaves the device only as described in section 4 (contact sync by the operating system) and section 6 (hand-offs the user starts).
 
 ### 2. Data handled on the device
 - Card photos (front and back) taken with the camera or imported from the album or a folder
@@ -99,7 +103,7 @@ Otherwise, information leaves the device only as described in section 4 (contact
 - Deleted cards (kept for 7 days, see section 8)
 - An activity log (the name of the step that failed, the file it concerned (card file names include the person's name), the error text, and image straightening results), kept on the device only, for troubleshooting
 
-All of this is stored in the app's private folder on the device (`Android/data/jp.tobishoku.meishi_ocr/files`) and its cache, and does not leave the device unless the user moves or shares it (except for the Android backup in section 8).
+All of this is stored in the app's private folder on the device (`Android/data/jp.tobishoku.meishi_ocr/files`) and its cache, and does not leave the device unless the user moves or shares it (for transfer to a new phone, see section 8).
 
 ### 3. Contacts access
 The app reads or writes the device contacts only when the user does one of the following:
@@ -115,7 +119,7 @@ When writing a contact, the app puts the card's memo, category, trade, trust rat
 If the user chooses a Google account as the destination, the contact (including the notes in section 3) is stored in that account's contacts (Google Contacts) through Android's contact synchronisation. This transfer is performed by the operating system; the app does not communicate with Google's servers itself. Google's handling of that data is governed by Google's privacy policy. Choosing a local device account keeps the contact on the device.
 
 ### 5. Google Play services
-Card edge detection and perspective correction at capture use the ML Kit document scanner provided by Google Play services. Google Play services may download the text-recognition and scanner modules on first use. The processing itself runs on the device; images are not sent to Google. Diagnostics are sent as described in section 1.
+Card edge detection and perspective correction at capture use the ML Kit document scanner provided by Google Play services. Google Play services may download the text-recognition and scanner modules on first use. The processing itself runs on the device; images are not sent to Google. The app makes no network connections, so no diagnostics are sent either (section 1).
 
 ### 6. Hand-off to other apps
 The following hand-offs happen only when the user starts them. Handling after the hand-off is governed by the receiving app's policy.
@@ -129,7 +133,7 @@ The following hand-offs happen only when the user starts them. Handling after th
 - Camera: photographing cards
 - Read/write contacts: the actions in section 3
 - Read storage (Android 12 and earlier) and write storage (Android 9 and earlier): requested by the photo picker and camera components; the app only reads images the user picks and its own private folder
-- Network access and network state: ML Kit's diagnostics in section 1
+- Network state: declared by an ML Kit component; the app has no internet permission, so it is not used for any connection
 
 Sharing, adding to the calendar and choosing a file use the system's standard screens and need no additional permission.
 
@@ -139,7 +143,7 @@ Stored data remains on the device until the user deletes it or uninstalls the ap
 - A deleted card remains in automatic backups made before the deletion (the latest five) and in vCard / CSV files the user exported. Automatic backups are deleted oldest first as new ones are made.
 - Uninstalling deletes everything in the app's private folder, including the trash and the automatic backups.
 
-Android backup: if backup to Google is turned on in the device settings, Android may include the app's private data (cards, images, settings) in the user's Google account backup and restore it on a new device. This transfer is performed by the operating system, and Google's handling of it is governed by Google's policies. Turning backup off in the device settings stops it.
+Android backup: from version 0.2.16 the app's data is excluded from the cloud backup to the user's Google account. A direct phone-to-phone transfer (Android 12 and later) moves the app's data to the new phone; this transfer is performed by the operating system. In version 0.2.15 and earlier, if backup to Google was turned on in the device settings, the app's data could be included in that backup.
 
 Contacts already registered can be removed from the device's contacts app (or Google Contacts for a Google account). Backups, vCard and CSV files the user has moved or shared off the device are under the user's control.
 
