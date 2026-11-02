@@ -357,7 +357,7 @@ class _HomeShellState extends State<HomeShell> {
     _reload();
     if (!mounted) return;
     _undoToast(
-        '「${newer.name}」に 1 枚にまとめました${inherited ? '。電話帳の連絡先は、この名刺を開いて保存すると新しい内容になります' : ''}',
+        '「${newer.name}」の名刺を 1 枚にまとめました${inherited ? '。電話帳の連絡先は、この名刺を開いて保存すると新しい内容になります' : ''}',
         () async {
       // Edited since (a 連絡済み, a 保存): keep that; only bring the old card back.
       final now = await store.loadCard(newer.stem);

@@ -342,19 +342,23 @@ class _SearchScreenState extends State<SearchScreen> {
 
   /// One scrolling line of chips (never wraps into a tall block): the
   /// values in use, tap again to clear.
-  Widget _chips(String label, List<String> values, String? selected, ValueChanged<String?> pick) =>
-      SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.fromLTRB(AppSpace.gutter, AppSpace.unit, AppSpace.gutter, 0),
-        child: Row(children: [
-          Text(label,
-              style: Theme.of(context).textTheme.labelLarge?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant)),
-          for (final v in values)
-            Padding(
-              padding: const EdgeInsets.only(left: AppSpace.unit),
-              child: FilterChip(label: Text(v), selected: selected == v, onSelected: (on) => pick(on ? v : null)),
-            ),
-        ]),
+  // Left-aligned like the rows below it: a short row would otherwise be
+  // centred by the Column (seen on the P08_T, 2026-11-02).
+  Widget _chips(String label, List<String> values, String? selected, ValueChanged<String?> pick) => Align(
+        alignment: AlignmentDirectional.centerStart,
+        child: SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          padding: const EdgeInsets.fromLTRB(AppSpace.gutter, AppSpace.unit, AppSpace.gutter, 0),
+          child: Row(children: [
+            Text(label,
+                style: Theme.of(context).textTheme.labelLarge?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant)),
+            for (final v in values)
+              Padding(
+                padding: const EdgeInsets.only(left: AppSpace.unit),
+                child: FilterChip(label: Text(v), selected: selected == v, onSelected: (on) => pick(on ? v : null)),
+              ),
+          ]),
+        ),
       );
 
   @override

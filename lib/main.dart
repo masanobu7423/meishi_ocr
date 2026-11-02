@@ -779,7 +779,9 @@ class ScanPageState extends State<ScanPage> {
             // keyboard overflowed in landscape.
             Expanded(
               child: CardForm(
-                key: ValueKey(_frontPath),
+                // One form state per card: photo-less cards (phone-book imports) all have
+                // a null photo path and kept the previous card's scroll position.
+                key: ValueKey(_frontPath ?? _source),
                 controllers: _ctl,
                 lines: [...?_front, ...?_back],
                 missing: _missing,
