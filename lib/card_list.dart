@@ -11,7 +11,7 @@ enum CardSort { date, company, name }
 
 /// What the list shows: everything, only burst captures nobody has looked
 /// at yet, or everything not yet in the address book.
-enum StatusFilter { all, unreviewed, unregistered, duplicate, due }
+enum StatusFilter { all, unreviewed, unregistered, duplicate, due, needsCheck }
 
 List<CardSummary> filterCards(List<CardSummary> cards, StatusFilter f) => switch (f) {
       StatusFilter.all => cards,
@@ -22,6 +22,7 @@ List<CardSummary> filterCards(List<CardSummary> cards, StatusFilter f) => switch
           return cards.where((c) => d.contains(c.stem)).toList();
         }(),
       StatusFilter.due => byNextContact(cards),
+      StatusFilter.needsCheck => cards.where((c) => c.needsCheck).toList(),
     };
 
 /// Pure ordering used by the list screen.
@@ -250,6 +251,7 @@ class _CardListState extends State<CardList> {
                         ? _Pill('期限切れ ${_md(d)}', scheme.errorContainer, scheme.onErrorContainer)
                         : _Pill('連絡 ${_md(d)}', scheme.tertiaryContainer, scheme.onTertiaryContainer),
                   if (dups.contains(c.stem)) _Pill('重複', scheme.secondaryContainer, scheme.onSecondaryContainer),
+                  if (widget.showStatus && c.needsCheck) _Pill('要確認', scheme.errorContainer, scheme.onErrorContainer),
                   if (widget.showStatus && c.status == CardStatus.unreviewed)
                     _Pill('未確認', scheme.errorContainer, scheme.onErrorContainer)
                   else if (widget.showStatus && c.status == CardStatus.reviewed)
@@ -500,6 +502,7 @@ class _ListScreenState extends State<ListScreen> {
               ButtonSegment(value: StatusFilter.unregistered, label: Text('未登録')),
               ButtonSegment(value: StatusFilter.duplicate, label: Text('重複')),
               ButtonSegment(value: StatusFilter.due, label: Text('連絡予定')),
+              ButtonSegment(value: StatusFilter.needsCheck, label: Text('要確認')),
             ],
             selected: {_filter},
             onSelectionChanged: (s) {
@@ -537,6 +540,7 @@ class _ListScreenState extends State<ListScreen> {
                     StatusFilter.unreviewed => '未確認の名刺はありません',
                     StatusFilter.duplicate => '同じ電話番号やメールの名刺はありません',
                     StatusFilter.due => '次回連絡日を入れた名刺はありません。確認画面の「次回連絡日」で設定できます',
+                    StatusFilter.needsCheck => '誤読の疑いがある名刺はありません',
                     _ => '未登録の名刺はありません',
                   },
           ),

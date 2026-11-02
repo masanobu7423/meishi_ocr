@@ -56,6 +56,7 @@ class HomeScreen extends StatelessWidget {
     final dueList = dueCards(cards, today: today);
     final due = dueList.length;
     final dups = duplicateStems(cards).length;
+    final check = cards.where((c) => c.needsCheck).length;
     Widget tile(String label, int n, String unit, StatusFilter f) => InkWell(
           borderRadius: BorderRadius.circular(AppRadius.large),
           onTap: () => onContinue!(f),
@@ -66,6 +67,7 @@ class HomeScreen extends StatelessWidget {
       tile('未登録', cards.where((c) => c.status != CardStatus.registered).length, '枚', StatusFilter.unregistered),
       if (due > 0) tile('連絡予定', due, '件', StatusFilter.due),
       if (dups > 0) tile('重複', dups, '枚', StatusFilter.duplicate),
+      if (check > 0) tile('要確認', check, '枚', StatusFilter.needsCheck),
     ];
 
     return ListView(

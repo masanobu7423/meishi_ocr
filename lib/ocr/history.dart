@@ -1,8 +1,10 @@
 import 'card_status.dart';
+import 'checks.dart';
 import 'dates.dart';
 import 'contact_mapper.dart' show phoneDigits;
 import 'extractor.dart';
 import 'vault_index.dart';
+import 'vcard_export.dart' show fieldsFromFrontmatter;
 
 export 'dates.dart';
 
@@ -25,6 +27,8 @@ class CardSummary {
   final String? lastContact;
   /// 都道府県 from the address (the note's `pref`), for the ledger filter.
   final String? pref;
+  /// A checked field looks misread (see checks.dart): 要確認 in the list.
+  final bool needsCheck;
   final CardStatus status;
 
   const CardSummary({
@@ -51,6 +55,7 @@ class CardSummary {
     this.nextContact,
     this.lastContact,
     this.pref,
+    this.needsCheck = false,
     this.status = CardStatus.reviewed,
   });
 
@@ -91,6 +96,9 @@ List<CardSummary> cardSummaries(Map<String, String> notes) {
       nextContact: fm['next_contact'],
       lastContact: fm['last_contact'],
       pref: fm['pref'],
+      // No date: only misreads, not the licence renewal (that changes by the day).
+      // Phone-book imports (pb_*) never went through OCR: nothing was misread.
+      needsCheck: !(fm['source'] ?? '').startsWith('pb_') && cardIssues(fieldsFromFrontmatter(fm).toJson()).isNotEmpty,
       status: parseStatus(fm['status']),
     ));
   }

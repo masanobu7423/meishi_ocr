@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'ocr/address.dart';
+import 'ocr/checks.dart';
 import 'ocr/extractor.dart';
 import 'ocr/fields.dart';
 import 'ocr/dates.dart';
@@ -142,22 +143,72 @@ class _CardFormState extends State<CardForm> {
     setState(() {});
   }
 
-  Widget _text(String k, TextTheme text, ColorScheme scheme) => TextField(
-        controller: widget.controllers[k],
-        focusNode: _focus[k],
-        decoration: InputDecoration(
-          labelText: fieldLabels[k],
-          helperText: widget.missing.contains(k)
-              ? '読み取れませんでした。下の文字をタップするか入力してください'
-              : listFields.contains(k)
-                  ? '複数はカンマで区切る'
+  /// A text field; checked fields (see [checkedFields]) say under the field
+  /// why the value looks wrong, live as the user types.
+  Widget _text(String k, TextTheme text, ColorScheme scheme) => ValueListenableBuilder<TextEditingValue>(
+        valueListenable: widget.controllers[k]!,
+        builder: (context, v, _) {
+          final issue = fieldIssue(k, v.text, today: widget.today ?? DateTime.now());
+          final missing = widget.missing.contains(k) && v.text.trim().isEmpty;
+          return TextField(
+            controller: widget.controllers[k],
+            focusNode: _focus[k],
+            decoration: InputDecoration(
+              labelText: fieldLabels[k],
+              helperText: missing
+                  ? '読み取れませんでした。下の文字をタップするか入力してください'
+                  : issue?.text ?? (listFields.contains(k) ? '複数はカンマで区切る' : null),
+              helperMaxLines: 3,
+              helperStyle: text.labelSmall?.copyWith(
+                  color: missing || issue?.misread == true
+                      ? scheme.error
+                      : issue != null
+                          ? scheme.tertiary
+                          : scheme.onSurfaceVariant),
+              suffixIcon: _target == k
+                  ? Icon(Icons.edit, size: AppSize.iconSmall, color: scheme.primary, semanticLabel: '入力先')
                   : null,
-          helperStyle: text.labelSmall?.copyWith(
-              color: widget.missing.contains(k) ? scheme.error : scheme.onSurfaceVariant),
-          suffixIcon: _target == k
-              ? Icon(Icons.edit, size: AppSize.iconSmall, color: scheme.primary, semanticLabel: '入力先')
-              : null,
-        ),
+            ),
+          );
+        },
+      );
+
+  /// 要確認 at the top of the form: every field with an issue, one tap away.
+  Widget _issues(TextTheme text, ColorScheme scheme) => ListenableBuilder(
+        listenable: Listenable.merge([for (final k in checkedFields) widget.controllers[k]]),
+        builder: (context, _) {
+          // Misreads only, as in the list: a licence renewal is noted under its field.
+          final issues = cardIssues({for (final k in checkedFields) k: widget.controllers[k]!.text})
+            ..removeWhere((_, i) => !i.misread);
+          if (issues.isEmpty) return const SizedBox.shrink();
+          return Container(
+            margin: const EdgeInsets.only(bottom: AppSpace.unit),
+            padding: const EdgeInsets.all(AppSpace.unit),
+            decoration: BoxDecoration(
+              color: scheme.errorContainer,
+              borderRadius: BorderRadius.circular(AppRadius.medium),
+            ),
+            child: Wrap(
+              spacing: AppSpace.unit,
+              runSpacing: AppSpace.unit / 2,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                Text('要確認', style: text.labelLarge?.copyWith(color: scheme.onErrorContainer)),
+                for (final k in issues.keys)
+                  ActionChip(
+                    label: Text(fieldLabels[k]!),
+                    tooltip: '「${fieldLabels[k]}」へ移動',
+                    onPressed: () {
+                      _focus[k]!.requestFocus();
+                      // Already focused (scrolled away while typing): requestFocus does not scroll.
+                      final c = _focus[k]!.context;
+                      if (c != null) Scrollable.ensureVisible(c, alignment: 0.3);
+                    },
+                  ),
+              ],
+            ),
+          );
+        },
       );
 
   Widget _chips(String k) {
@@ -293,11 +344,15 @@ class _CardFormState extends State<CardForm> {
       ...?widget.suggestions['category']?.where((v) => !categoryChoices.contains(v)),
     ];
     final jobs = [...widget.jobs, ...?widget.suggestions['job']?.where((v) => !widget.jobs.contains(v))];
-    return ListView(
+    // Not a lazy ListView: every field is built, so 要確認 can focus one far below.
+    return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(
           AppSpace.gutter, AppSpace.unit, AppSpace.gutter, AppSpace.unit * 12),
+      child: Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         if (widget.header != null) widget.header!,
+        _issues(text, scheme),
         for (final k in fieldOrder)
           Padding(
             padding: const EdgeInsets.only(bottom: AppSpace.unit),
@@ -332,6 +387,7 @@ class _CardFormState extends State<CardForm> {
           ),
         ],
       ],
+      ),
     );
   }
 }
